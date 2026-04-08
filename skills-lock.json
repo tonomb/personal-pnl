@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "logging-best-practices": {
+      "source": "boristane/agent-skills",
+      "sourceType": "github",
+      "computedHash": "b4810947c33b5356bf385c84cfe387afa9c54af652baaedb7d642a083cceaa4c"
+    },
+    "tdd": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "computedHash": "ad055544599481182d0079c4198e85da26677cb408a677be2da04915375f0427"
+    }
+  }
+}

@@ -1,4 +1,16 @@
 {
 	"extends": "@repo/typescript-config/lib.json",
-	"include": ["./*.ts"]
+	"compilerOptions": {
+		"composite": true,
+		"paths": {
+			"@pnl/types": ["./packages/types/src"],
+			"@pnl/types/*": ["./packages/types/src/*"]
+		}
+	},
+	"include": ["./*.ts"],
+	"references": [
+		{ "path": "./packages/types" },
+		{ "path": "./apps/worker" },
+		{ "path": "./apps/web" }
+	]
 }

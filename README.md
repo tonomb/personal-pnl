@@ -1,3 +1,25 @@
+
+# Personal P&L
+**A Opinionated Open Source Operating System For Your Personal Finances**
+
+## Backstory
+For the past 5 years I have managed my personal finances in the same way I would manage the personal finances of a company. I have a very complicated Excel Sheet to track a Profit & Loss statement to run my personal finances like a company.
+
+P&L are the gold standard for managing and tracking a companys finances why not take the same ideas and bring them over to personal finance.
+
+We're now creating the product as a fully open-source project. The goal is to let you run the app yourself, for free, and use it to manage your own finances and eventually offer a hosted version of the app for a small monthly fee.
+
+## Hosting
+Primary ways to use the Personal P&L app:
+
+**TBD**
+
+1. Managed
+2. Self-host
+
+## Contributing
+Email Me
+
 # Workers Monorepo Template
 
 This template provides a fully featured monorepo for managing multiple Cloudflare Workers.
@@ -13,22 +35,12 @@ Managing multiple related services (like Cloudflare Workers) in separate reposit
 - **Streamlined CI/CD** - A single pipeline (like the ones in `.github/workflows/`) can build, test, and deploy all Workers, simplifying the release process.
 - **Easier refactoring** - Refactoring code that spans multiple workers or shared packages is significantly easier within a single repository.
 
-## Quick Start
-
-You can bootstrap a new monorepo using this template by running:
-
-```bash
-npm create workers-monorepo@latest
-```
-
 ## Prerequisites
 
 - node.js v22 or later
 - pnpm v10 or later
 - bun 1.2 or later
-- rg (ripgrep) - optional, but recommended for shell formatting
-- shfmt - optional, but recommended for shell formatting
-- mise - optional, but recommended for tool management
+- [just](https://just.systems) — task runner
 
 ## Getting Started
 
@@ -36,49 +48,75 @@ npm create workers-monorepo@latest
 
 ```bash
 just install
+# or: pnpm install
 ```
 
-**Run Development Server:**
+**Run Development Servers:**
+
+Starts the React web app (port 5173) and the API worker (port 8787) concurrently:
 
 ```bash
 just dev
+# or: pnpm dev
 ```
 
-**Create a New Worker:**
-
-Use the built-in generator to scaffold a new Cloudflare Workers application:
+**Apply Database Schema:**
 
 ```bash
-just new-worker
+pnpm -F pnl-api wrangler d1 create personal-pnl  # create D1 database (first time)
+pnpm db:push                                       # apply Drizzle schema to D1
 ```
 
-This will guide you throught he setup process of creating a new application within the `apps/` directory.
+**Build:**
 
-**Deploy all Workers:**
+```bash
+just build
+# or: pnpm build
+```
+
+**Deploy:**
 
 ```bash
 just deploy
 ```
 
-Note: This will also deploy the example application in `apps/example-worker-echoback`. If you don't want to deploy that Worker, simply remove the deploy script from [apps/example/workers/echoback/package.json](apps/example-worker-echoback/package.json).
+## Monorepo Structure
 
-## Repository Structure
+```
+apps/
+  web/          # React + Vite SPA → Cloudflare Pages (port 5173 in dev)
+  worker/       # Hono + tRPC API → Cloudflare Worker (port 8787 in dev)
+packages/
+  types/        # @pnl/types — Drizzle schema, Zod validators, shared TS types
+  hono-helpers/ # Shared Hono middleware and utilities
+  tools/        # Dev scripts and CLI (bin/ scripts used in package.json)
+  eslint-config/      # Shared ESLint configuration
+  typescript-config/  # Shared tsconfig bases (base, workers, lib, etc.)
+turbo/
+  generators/   # turbo gen templates for new workers and packages
+```
 
-This monorepo is organized as follows:
+### Type Safety Flow
 
-- `apps/` - Contains individual Cloudflare Worker applications. Each subdirectory is typically a deployable unit.
-  - `example-worker-echoback` - An example worker demonstrating basic functionality.
-- `packages/` - Shared libraries, utilities, and configurations used across multiple applications.
-- `packages/tools/` - A package containing various scripts and a CLI for developing the monorepo.
-  - Each Workers application's package.json scripts point to scripts within `packages/tools/bin/`. This makes it easier to keep scripts consistent across Workers.
-- `turbo/` - Contains `turbo gen` templates
-  - `fetch-worker`: A basic Cloudflare Worker template.
-  - `fetch-worker-vite`: A Cloudflare Worker template using Vite for bundling and development.
-- `Justfile` - Defines convenient aliases for common development tasks.
-- `pnpm-workspace.yaml` - Defines the pnpm workspace structure.
-- `turbo.json` - Configures Turborepo build and task execution.
-- `.syncpackrc.cjs` - Configures `syncpack` for managing and synchronizing dependency versions across packages in the monorepo.
-  - The included configuration ensures that dependencies are all kept in sync and use a pinned version so that we can choose when to update dependencies.
+Types flow in one direction with no manual sync required:
+
+```
+packages/types/src/schema.ts  (Drizzle schema)
+  → Drizzle infers TypeScript types for all tables
+  → Zod schemas validate all inputs (via drizzle-zod)
+  → tRPC AppRouter exported from apps/worker
+  → apps/web imports AppRouter type only (zero runtime Worker code in browser bundle)
+```
+
+The `AppRouter` type is the single contract between frontend and backend.
+
+### Configuration Files
+
+- `Justfile` — Convenient aliases for common development tasks
+- `pnpm-workspace.yaml` — Defines the pnpm workspace structure (`apps/*`, `packages/*`)
+- `turbo.jsonc` — Configures Turborepo pipeline (build, dev, check, deploy)
+- `tsconfig.json` — Root TypeScript config with `@pnl/types` path alias and project references
+- `.syncpackrc.cjs` — Keeps dependency versions pinned and in sync across packages
 
 ## Available Commands
 

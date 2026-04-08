@@ -12,7 +12,13 @@
 	},
 	"scripts": {
 		"check:lint": "run-eslint",
-		"check:types": "run-tsc"
+		"check:types": "run-tsc",
+		"db:generate": "drizzle-kit generate --config drizzle.config.ts",
+		"db:push": "drizzle-kit push --config drizzle.config.ts",
+		"db:push:local": "wrangler d1 migrations apply personal-pnl --config ../../apps/worker/wrangler.jsonc",
+		"db:push:remote": "wrangler d1 migrations apply personal-pnl --config ../../apps/worker/wrangler.jsonc --remote",
+		"db:seed": "wrangler d1 execute personal-pnl --config ../../apps/worker/wrangler.jsonc --remote --file=./src/seed.sql",
+		"db:seed:local": "wrangler d1 execute personal-pnl --config ../../apps/worker/wrangler.jsonc --file=./src/seed.sql"
 	},
 	"dependencies": {
 		"drizzle-orm": "0.44.2",
@@ -22,6 +28,8 @@
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
-		"@repo/typescript-config": "workspace:*"
+		"@repo/typescript-config": "workspace:*",
+		"drizzle-kit": "0.30.6",
+		"wrangler": "4.60.0"
 	}
 }

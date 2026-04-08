@@ -10,7 +10,13 @@
 		"check:format": "runx check --format",
 		"check:lint:all": "run-eslint",
 		"test": "vitest",
-		"test:ci": "run-vitest-ci"
+		"test:ci": "run-vitest-ci",
+		"db:generate": "pnpm -F @pnl/types db:generate",
+		"db:push": "pnpm -F @pnl/types db:push",
+		"db:push:local": "pnpm -F @pnl/types db:push:local",
+		"db:push:remote": "pnpm -F @pnl/types db:push:remote",
+		"db:seed": "pnpm -F @pnl/types db:seed",
+		"db:seed:local": "pnpm -F @pnl/types db:seed:local"
 	},
 	"devDependencies": {
 		"@babel/plugin-transform-explicit-resource-management": "7.28.0",

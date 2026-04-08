@@ -8,27 +8,32 @@ import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
 export const categories = sqliteTable('categories', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull(),
-	type: text('type', { enum: ['income', 'expense'] }).notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
+	groupType: text('group_type', { enum: ['INCOME', 'FIXED', 'VARIABLE', 'IGNORED'] }).notNull(),
+	isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+	color: text('color'),
+	sortOrder: integer('sort_order').notNull().default(0),
 })
 
 export const transactions = sqliteTable('transactions', {
-	id: integer('id').primaryKey({ autoIncrement: true }),
-	date: text('date').notNull(), // ISO date string (YYYY-MM-DD)
+	id: text('id').primaryKey(), // UUID
+	date: text('date').notNull(), // YYYY-MM-DD
 	description: text('description').notNull(),
-	amount: real('amount').notNull(), // positive for income, negative for expenses
+	amount: real('amount').notNull(), // always positive
+	type: text('type', { enum: ['DEBIT', 'CREDIT'] }).notNull(),
 	categoryId: integer('category_id').references(() => categories.id),
-	source: text('source', { enum: ['csv', 'manual'] }).default('csv').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
+	sourceFile: text('source_file'),
+	rawRow: text('raw_row'), // JSON text
+	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()).notNull(),
 })
 
 export const columnMappings = sqliteTable('column_mappings', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
-	bankName: text('bank_name').notNull(),
-	dateColumn: text('date_column').notNull(),
-	descriptionColumn: text('description_column').notNull(),
-	amountColumn: text('amount_column').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
+	fileFingerprint: text('file_fingerprint').notNull().unique(),
+	dateCol: text('date_col').notNull(),
+	descriptionCol: text('description_col').notNull(),
+	amountCol: text('amount_col'),
+	debitCol: text('debit_col'),
+	creditCol: text('credit_col'),
 })
 
 // ---------------------------------------------------------------------------

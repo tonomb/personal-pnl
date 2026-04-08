@@ -20,7 +20,7 @@
 		{
 			"binding": "DB",
 			"database_name": "personal-pnl",
-			"database_id": "64155aee-5a3e-4e8d-8f08-2fcfce25bf9f"
+			"database_id": "64155aee-5a3e-4e8d-8f08-2fcfce25bf9f",
 			"migrations_dir": "../../packages/types/drizzle"
 		}
 	],

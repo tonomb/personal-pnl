@@ -4,5 +4,6 @@ set -eu
 NAME=$(jq -r '.name' package.json)
 
 exec wrangler dev \
+	--remote \
 	--var NAME:"$NAME" \
 	"$@"

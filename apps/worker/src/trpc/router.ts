@@ -8,7 +8,9 @@ export const router = t.router
 export const publicProcedure = t.procedure
 
 export const appRouter = router({
-	healthCheck: publicProcedure.query(() => ({ status: 'ok' })),
+	health: router({
+		ping: publicProcedure.query(() => ({ pong: true })),
+	}),
 })
 
 export type AppRouter = typeof appRouter

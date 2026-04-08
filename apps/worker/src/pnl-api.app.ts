@@ -23,6 +23,7 @@ const app = new Hono<App>()
 	.notFound(withNotFound())
 
 	.get('/', (c) => c.json({ name: 'Personal P&L API' }))
+	.get('/health', (c) => c.json({ ok: true, timestamp: new Date().toISOString() }))
 
 	.use(
 		'/trpc/*',

@@ -4,6 +4,9 @@
 	"main": "src/pnl-api.app.ts",
 	"compatibility_date": "2025-09-20",
 	"compatibility_flags": ["nodejs_compat"],
+	"dev": {
+		"port": 8787
+	},
 	"routes": [],
 	"logpush": true,
 	"upload_source_maps": true,

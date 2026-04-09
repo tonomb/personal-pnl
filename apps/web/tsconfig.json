@@ -6,6 +6,7 @@
 		"jsx": "react-jsx",
 		"module": "es2022",
 		"paths": {
+			"@/*": ["./src/*"],
 			"@pnl/types": ["../../packages/types/src"],
 			"@pnl/types/*": ["../../packages/types/src/*"]
 		}

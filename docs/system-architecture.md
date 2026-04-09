@@ -35,6 +35,14 @@ graph TB
         Schema --> Zod
     end
 
+    subgraph Engine["packages/engine"]
+        Money["money.ts<br/>add/subtract/multiply/divide<br/>safeDivide/toStorable/toDisplay"]
+        PnlTypes["types/index.ts<br/>PnlInput · PnlResult"]
+        ComputePnl["pnl.ts<br/>computePnl()"]
+        Money --> ComputePnl
+        PnlTypes --> ComputePnl
+    end
+
     subgraph DB["Cloudflare D1 (SQLite)"]
         Tables["transactions<br/>categories<br/>column_mappings"]
     end
@@ -42,6 +50,7 @@ graph TB
     tRPCC -- "HTTP /trpc/*<br/>(proxied in dev)" --> Hono
     Ctx -- "drizzle(env.DB)" --> Tables
     AppRouter -- "import types" --> Schema
+    AppRouter -- "computePnl()" --> ComputePnl
     tRPCC -- "import type AppRouter" --> RouterType
 ```
 
@@ -134,11 +143,52 @@ personal-pnl/
     │       ├── schema.ts            # Drizzle tables + Zod insert/select schemas
     │       ├── trpc.ts              # AppRouter type (context-free, for web)
     │       └── index.ts             # Re-exports everything
+    ├── engine/                      # @pnl/engine — P&L computation (Decimal.js)
+    │   └── src/
+    │       ├── types/index.ts       # PnlInput, PnlResult interfaces (types only)
+    │       ├── money.ts             # add/subtract/multiply/divide/safeDivide/toStorable/toDisplay
+    │       ├── money.test.ts        # 11 unit tests
+    │       ├── pnl.ts               # computePnl() — no raw JS arithmetic
+    │       ├── pnl.test.ts          # 9 unit tests
+    │       └── index.ts             # Re-exports all
     ├── hono-helpers/                # Shared Hono middleware (logging, errors, CORS)
     ├── tools/                       # Dev scripts — run-vite-build, run-tsc, etc.
     ├── eslint-config/               # Shared ESLint config
     └── typescript-config/           # Shared tsconfigs (base, workers, lib)
 ```
+
+---
+
+## Monetary Arithmetic
+
+All monetary computation uses **Decimal.js** (`@pnl/engine`). Raw JS arithmetic (`+`, `-`, `*`, `/`) on monetary values is forbidden — binary floating-point produces silent errors that corrupt financial totals.
+
+### Data flow for amounts
+
+```
+D1 (REAL)  →  new Decimal(value)  →  add/subtract/etc.  →  toStorable()  →  D1 (REAL)
+                                                          →  toDisplay()   →  UI string
+```
+
+### Rules
+
+| Rule | Reason |
+|---|---|
+| Use `add(a, b)` not `a + b` | `0.1 + 0.2 === 0.30000000000000004` in JS |
+| Use `safeDivide(n, d)` not `n / d` | Returns `null` when `d = 0` — no crashes |
+| Call `toStorable(d)` before any DB write | Rounds to 2 dp, returns plain `number` |
+| Wrap DB reads in `new Decimal(value)` before arithmetic | D1 returns JS `number` |
+| Use `toDisplay(d)` for UI formatting | MXN locale via `Intl.NumberFormat` |
+| Never mix raw JS arithmetic and Decimal in the same chain | Silent precision drift |
+
+### Package path aliases
+
+| Import | Resolves to |
+|---|---|
+| `@pnl/engine` | `packages/engine/src` |
+| `@pnl/engine` → `money` | `add`, `subtract`, `multiply`, `divide`, `safeDivide`, `toStorable`, `toDisplay` |
+| `@pnl/engine` → `types` | `PnlInput`, `PnlResult` |
+| `@pnl/engine` → `pnl` | `computePnl` |
 
 ---
 

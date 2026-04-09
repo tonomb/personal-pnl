@@ -22,6 +22,26 @@ This project uses [shadcn/ui](https://ui.shadcn.com) with Tailwind CSS v4.
 - Theme is defined via CSS variables in `apps/web/src/index.css` (oklch format, Tailwind v4).
 - Configuration is in `apps/web/components.json` — style: `base-nova`, baseColor: `neutral`.
 
+## Monetary Arithmetic — Always Use Decimal.js
+
+**Never use raw `+`, `-`, `*`, `/` on monetary values.** JavaScript binary floating-point produces silent errors (`0.1 + 0.2 !== 0.3`) that corrupt P&L totals and savings rates.
+
+All monetary computation lives in `packages/engine` (`@pnl/engine`):
+
+| What | Where |
+|---|---|
+| Helper functions (`add`, `subtract`, `multiply`, `divide`, `safeDivide`, `toStorable`, `toDisplay`) | `packages/engine/src/money.ts` |
+| P&L types (`PnlInput`, `PnlResult`) | `packages/engine/src/types/index.ts` |
+| P&L computation (`computePnl`) | `packages/engine/src/pnl.ts` |
+
+**Rules:**
+- Import and use `add()`, `subtract()`, etc. from `@pnl/engine` — never operate on raw numbers directly.
+- `safeDivide(numerator, denominator)` returns `null` when denominator is zero — handle the null (no division-by-zero crashes).
+- Before writing to D1 call `toStorable(decimal)` → returns a plain `number` rounded to 2 decimal places.
+- After reading from D1 wrap in `new Decimal(value)` before any arithmetic.
+- `toDisplay(decimal)` formats as MXN currency string — use this for all UI display.
+- Do not mix raw JS arithmetic and Decimal within the same calculation chain.
+
 ## tRPC AppRouter
 
 `AppRouter` is defined in `packages/types/src/trpc.ts` (context-free, for type safety in the web app).  

@@ -124,6 +124,7 @@ apps/
   worker/       # Hono + tRPC API → Cloudflare Worker (port 8787 in dev)
 packages/
   types/        # @pnl/types — Drizzle schema, Zod validators, shared TS types
+  engine/       # @pnl/engine — P&L computation engine (Decimal.js, no raw JS arithmetic)
   hono-helpers/ # Shared Hono middleware and utilities
   tools/        # Dev scripts and CLI (bin/ scripts used in package.json)
   eslint-config/      # Shared ESLint configuration
@@ -145,6 +146,23 @@ packages/types/src/schema.ts  (Drizzle schema)
 ```
 
 The `AppRouter` type is the single contract between frontend and backend.
+
+### Monetary Arithmetic — Decimal.js
+
+All monetary computation uses **Decimal.js** via `@pnl/engine`. Raw JS arithmetic (`+`, `-`, `*`, `/`) on monetary values is **never used** — binary floating-point produces silent errors that corrupt financial totals (`0.1 + 0.2 !== 0.3`).
+
+```
+DB read (REAL)  →  new Decimal(value)  →  add() / subtract() / etc.  →  toStorable()  →  DB write
+                                                                       →  toDisplay()   →  UI
+```
+
+| Import from `@pnl/engine` | Purpose |
+|---|---|
+| `add`, `subtract`, `multiply`, `divide` | Safe decimal arithmetic |
+| `safeDivide` | Division that returns `null` when denominator is zero |
+| `toStorable` | Convert `Decimal` → `number` (2 dp) for DB writes |
+| `toDisplay` | Format as MXN currency string for UI |
+| `computePnl` | Full P&L calculation from transactions + categories |
 
 ### Configuration Files
 

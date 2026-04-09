@@ -10,12 +10,8 @@ P&L are the gold standard for managing and tracking a companys finances why not 
 We're now creating the product as a fully open-source project. The goal is to let you run the app yourself, for free, and use it to manage your own finances and eventually offer a hosted version of the app for a small monthly fee.
 
 ## Hosting
-Primary ways to use the Personal P&L app:
 
-**TBD**
-
-1. Managed
-2. Self-host
+This project is designed to run **locally only**. There is no authentication — it is a single-user personal tool and adding auth is out of scope. Do not expose it to the public internet.
 
 ## Contributing
 Email Me

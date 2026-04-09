@@ -80,6 +80,42 @@ just build
 just deploy
 ```
 
+## UI Components — shadcn/ui
+
+This project uses [shadcn/ui](https://ui.shadcn.com) with **Tailwind CSS v4** for the React frontend.
+
+### Adding components
+
+Components are not bundled — they live as editable source files in `apps/web/src/components/ui/`. Add new ones with:
+
+```bash
+cd apps/web
+pnpm dlx shadcn@latest add <component>
+# e.g. pnpm dlx shadcn@latest add card input table
+```
+
+### Key paths
+
+| Path | Purpose |
+|---|---|
+| `apps/web/src/components/ui/` | shadcn component source files |
+| `apps/web/src/lib/utils.ts` | `cn()` utility (clsx + tailwind-merge) |
+| `apps/web/src/index.css` | Tailwind CSS v4 entry + theme CSS variables |
+| `apps/web/components.json` | shadcn configuration |
+
+### Style
+
+The project uses the **base-nova** style with neutral base color and CSS variable theming. CSS variables are defined in `src/index.css` using `oklch()` color format (Tailwind CSS v4 convention).
+
+### Usage in components
+
+```tsx
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+```
+
+The `@/` alias maps to `apps/web/src/`.
+
 ## Monorepo Structure
 
 ```

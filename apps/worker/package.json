@@ -21,7 +21,8 @@
 		"@trpc/server": "11.1.0",
 		"drizzle-orm": "0.44.2",
 		"hono": "4.9.11",
-		"workers-tagged-logger": "1.0.0"
+		"workers-tagged-logger": "1.0.0",
+		"zod": "4.1.12"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "0.12.6",

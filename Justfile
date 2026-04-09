@@ -26,26 +26,26 @@ install:
 [positional-arguments]
 [no-cd]
 check *args:
-  bun runx check "$@"
+  pnpm exec runx check "$@"
 
 # Fix issues with deps, lint, format, etc.
 [group('1. dev')]
 [positional-arguments]
 [no-cd]
 fix *args:
-  bun runx fix "$@"
+  pnpm exec runx fix "$@"
 
 [group('1. dev')]
 [positional-arguments]
 [no-cd]
 test *args:
-  bun vitest "$@"
+  pnpm exec vitest "$@"
 
 [group('1. dev')]
 [positional-arguments]
 [no-cd]
 build *args:
-  bun turbo build "$@"
+  pnpm exec turbo build "$@"
 
 # =============================== #
 #       LOCAL DEV COMMANDS        #
@@ -56,20 +56,20 @@ build *args:
 [positional-arguments]
 [no-cd]
 dev *args:
-  bun runx dev "$@"
+  pnpm exec runx dev "$@"
 
 # Run Workers in preview mode (if available)
 [group('2. local dev')]
 [no-cd]
 preview:
-  bun run preview
+  pnpm run preview
 
 # Deploy Workers
 [group('2. local dev')]
 [positional-arguments]
 [no-cd]
 deploy *args:
-  bun turbo deploy "$@"
+  pnpm exec turbo deploy "$@"
 
 # =============================== #
 #       GENERATOR COMMANDS        #
@@ -78,17 +78,17 @@ deploy *args:
 # Create changeset
 [group('3. generator')]
 cs:
-  bun run-changeset-new
+  pnpm exec run-changeset-new
 
 [group('3. generator')]
 [positional-arguments]
 gen *args:
-  bun turbo gen "$@"
+  pnpm exec turbo gen "$@"
 
 [group('3. generator')]
 [positional-arguments]
 new-package *args:
-  bun turbo gen new-package "$@"
+  pnpm exec turbo gen new-package "$@"
 
 # =============================== #
 #        UTILITY COMMANDS         #
@@ -98,10 +98,10 @@ new-package *args:
 [group('4. utility')]
 [positional-arguments]
 update *args:
-  bun runx update "$@"
+  pnpm exec runx update "$@"
 
 # CLI in packages/tools for running commands in the repo.
 [group('4. utility')]
 [positional-arguments]
 runx *args:
-  bun runx "$@"
+  pnpm exec runx "$@"

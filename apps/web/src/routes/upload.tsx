@@ -7,7 +7,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ColumnMapper, type MappingState } from '@/components/upload/ColumnMapper'
 import { DropZone } from '@/components/upload/DropZone'
+import { SheetSelector } from '@/components/upload/SheetSelector'
 import { generateFingerprint, generateTransactionId, parseAmount } from '@/lib/csv'
+import { getSheetNames, xlsxToCsvString } from '@/lib/xlsx'
 import { trpc } from '@/lib/trpc'
 
 import type { NewColumnMapping, NewTransaction } from '@pnl/types'
@@ -121,6 +123,7 @@ function toDbMapping(mapping: MappingState, fingerprint: string): NewColumnMappi
 
 function UploadPage() {
 	const [fileMap, setFileMap] = useState<Map<string, FileStatus>>(new Map())
+	const [sheetPicker, setSheetPicker] = useState<{ file: File; sheetNames: string[] } | null>(null)
 	const uploadMutation = trpc.transactions.upload.useMutation()
 	const getMappingUtils = trpc.useUtils()
 
@@ -136,64 +139,133 @@ function UploadPage() {
 		})
 	}
 
-	async function handleFiles(dropped: File[]) {
-		console.log('[upload] handleFiles called with', dropped.map((f) => f.name))
-		for (const file of dropped) {
-			console.log('[upload] processing file:', file.name)
-			updateFile(file.name, { phase: 'parsing' })
+	async function applyParsedRows(
+		file: File,
+		data: Record<string, string>[],
+		headers: string[],
+	) {
+		const fingerprint = generateFingerprint(headers)
 
-			// Promisify PapaParse so async/await works cleanly and errors surface
-			let parsed: { data: Record<string, string>[]; headers: string[] }
-			try {
-				parsed = await new Promise((resolve, reject) => {
-					Papa.parse<Record<string, string>>(file, {
-						header: true,
-						skipEmptyLines: true,
-						complete: ({ data, meta }) => resolve({ data, headers: meta.fields ?? [] }),
-						error: reject,
-					})
+		let existing = null
+		try {
+			existing = await getMappingUtils.transactions.getMapping.fetch(
+				{ fingerprint },
+				{ staleTime: 0 },
+			)
+		} catch {
+			// worker not reachable — treat as unknown fingerprint
+		}
+
+		if (existing) {
+			const syntheticMapping: MappingState = {
+				dateCol: existing.dateCol,
+				descriptionCol: existing.descriptionCol,
+				amountCol: existing.amountCol ?? undefined,
+				debitCol: existing.debitCol ?? undefined,
+				creditCol: existing.creditCol ?? undefined,
+				useDebitCredit: Boolean(existing.debitCol && existing.creditCol),
+			}
+			const txs = buildTransactions(data, syntheticMapping, file.name)
+			const dbMapping = toDbMapping(syntheticMapping, fingerprint)
+			updateFile(file.name, { phase: 'ready', transactions: txs, mapping: dbMapping })
+			toast(`Auto-mapped "${file.name}" from previous upload`)
+		} else {
+			updateFile(file.name, { phase: 'mapping', headers, rawRows: data, fingerprint })
+		}
+	}
+
+	async function parseCsvAndContinue(csvStringOrFile: string | File, file: File) {
+		let parsed: { data: Record<string, string>[]; headers: string[] }
+		try {
+			parsed = await new Promise((resolve, reject) => {
+				Papa.parse<Record<string, string>>(csvStringOrFile as string, {
+					header: true,
+					skipEmptyLines: true,
+					complete: ({ data, meta }) => resolve({ data, headers: meta.fields ?? [] }),
+					error: reject,
 				})
+			})
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Failed to parse'
+			updateFile(file.name, { phase: 'error', message })
+			toast.error(`"${file.name}": ${message}`)
+			return
+		}
+		await applyParsedRows(file, parsed.data, parsed.headers)
+	}
+
+	async function processFile(file: File) {
+		updateFile(file.name, { phase: 'parsing' })
+
+		const ext = file.name.split('.').pop()?.toLowerCase()
+
+		if (ext === 'xlsx' || ext === 'xls') {
+			let buffer: ArrayBuffer
+			try {
+				buffer = await file.arrayBuffer()
 			} catch (err) {
-				console.error('[upload] PapaParse error:', err)
-				const message = err instanceof Error ? err.message : 'Failed to parse CSV'
+				const message = err instanceof Error ? err.message : 'Could not read file'
 				updateFile(file.name, { phase: 'error', message })
 				toast.error(`"${file.name}": ${message}`)
-				continue
+				return
 			}
 
-			const { data, headers } = parsed
-			console.log('[upload] parsed ok, rows:', data.length, 'headers:', headers)
-			const fingerprint = generateFingerprint(headers)
-
-			let existing = null
+			let sheetNames: string[]
 			try {
-				console.log('[upload] fetching mapping for fingerprint:', fingerprint)
-				existing = await getMappingUtils.transactions.getMapping.fetch(
-					{ fingerprint },
-					{ staleTime: 0 },
-				)
-				console.log('[upload] getMapping result:', existing)
-			} catch (err) {
-				console.warn('[upload] getMapping fetch failed (worker down?):', err)
-				// worker not reachable — treat as unknown fingerprint
+				sheetNames = getSheetNames(buffer)
+			} catch {
+				const message = 'Could not read Excel file. It may be malformed or password-protected.'
+				updateFile(file.name, { phase: 'error', message })
+				toast.error(`"${file.name}": ${message}`)
+				return
 			}
 
-			if (existing) {
-				const syntheticMapping: MappingState = {
-					dateCol: existing.dateCol,
-					descriptionCol: existing.descriptionCol,
-					amountCol: existing.amountCol ?? undefined,
-					debitCol: existing.debitCol ?? undefined,
-					creditCol: existing.creditCol ?? undefined,
-					useDebitCredit: Boolean(existing.debitCol && existing.creditCol),
-				}
-				const txs = buildTransactions(data, syntheticMapping, file.name)
-				const dbMapping = toDbMapping(syntheticMapping, fingerprint)
-				updateFile(file.name, { phase: 'ready', transactions: txs, mapping: dbMapping })
-				toast(`Auto-mapped "${file.name}" from previous upload`)
-			} else {
-				updateFile(file.name, { phase: 'mapping', headers, rawRows: data, fingerprint })
+			if (sheetNames.length === 0) {
+				const message = 'The Excel file contains no sheets.'
+				updateFile(file.name, { phase: 'error', message })
+				toast.error(`"${file.name}": ${message}`)
+				return
 			}
+
+			// Always show SheetSelector so the user can set the header row
+			setSheetPicker({ file, sheetNames })
+			return
+		} else {
+			await parseCsvAndContinue(file, file)
+		}
+	}
+
+	async function handleSheetSelect(sheetName: string, headerRow: number) {
+		if (!sheetPicker) return
+		const { file } = sheetPicker
+		setSheetPicker(null)
+
+		let buffer: ArrayBuffer
+		try {
+			buffer = await file.arrayBuffer()
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Could not read file'
+			updateFile(file.name, { phase: 'error', message })
+			toast.error(`"${file.name}": ${message}`)
+			return
+		}
+
+		let csvString: string
+		try {
+			csvString = xlsxToCsvString(buffer, sheetName, headerRow)
+		} catch {
+			const message = 'Could not read Excel file. It may be malformed or password-protected.'
+			updateFile(file.name, { phase: 'error', message })
+			toast.error(`"${file.name}": ${message}`)
+			return
+		}
+
+		await parseCsvAndContinue(csvString, file)
+	}
+
+	async function handleFiles(dropped: File[]) {
+		for (const file of dropped) {
+			await processFile(file)
 		}
 	}
 
@@ -238,10 +310,21 @@ function UploadPage() {
 		<main className="mx-auto max-w-3xl space-y-6 p-8">
 			<div>
 				<h1 className="text-2xl font-bold">Upload</h1>
-				<p className="text-muted-foreground">Upload one or more bank statement CSV files.</p>
+				<p className="text-muted-foreground">Upload one or more bank statement CSV or XLSX files.</p>
 			</div>
 
 			<DropZone onFiles={handleFiles} />
+
+			{sheetPicker && (
+				<SheetSelector
+					sheetNames={sheetPicker.sheetNames}
+					onSelect={handleSheetSelect}
+					onCancel={() => {
+						updateFile(sheetPicker.file.name, undefined)
+						setSheetPicker(null)
+					}}
+				/>
+			)}
 
 			{fileMap.size > 0 && (
 				<ul className="space-y-4">

@@ -11,13 +11,10 @@ export function DropZone({ onFiles, disabled }: DropZoneProps) {
 	const inputRef = useRef<HTMLInputElement>(null)
 
 	function handleFiles(fileList: FileList | null) {
-		console.log('[DropZone] handleFiles called, fileList:', fileList)
 		if (!fileList) return
 		const all = Array.from(fileList)
-		console.log('[DropZone] all files:', all.map((f) => f.name))
-		const csvFiles = all.filter((f) => f.name.toLowerCase().endsWith('.csv'))
-		console.log('[DropZone] csv files:', csvFiles.map((f) => f.name))
-		if (csvFiles.length > 0) onFiles(csvFiles)
+		const accepted = all.filter((f) => /\.(csv|xlsx|xls)$/i.test(f.name))
+		if (accepted.length > 0) onFiles(accepted)
 	}
 
 	return (
@@ -46,12 +43,12 @@ export function DropZone({ onFiles, disabled }: DropZoneProps) {
 		>
 			<UploadCloud className="text-muted-foreground h-10 w-10" />
 			<p className="text-muted-foreground text-sm">
-				Drop CSV files here or click to browse
+				Drop CSV or XLSX files here or click to browse
 			</p>
 			<input
 				ref={inputRef}
 				type="file"
-				accept=".csv"
+				accept=".csv,.xlsx,.xls"
 				multiple
 				className="hidden"
 				disabled={disabled}

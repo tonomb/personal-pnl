@@ -36,8 +36,52 @@ describe('DropZone', () => {
 		expect(received).toHaveLength(2)
 	})
 
-	it('shows a drop zone with instructional text', () => {
+	it('passes .xlsx files to onFiles', async () => {
+		const onFiles = vi.fn()
+		render(<DropZone onFiles={onFiles} />)
+
+		const input = document.querySelector('input[type="file"]') as HTMLInputElement
+		await userEvent.upload(
+			input,
+			makeFile('statement.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+		)
+
+		expect(onFiles).toHaveBeenCalledOnce()
+		const received: File[] = onFiles.mock.calls[0][0]
+		expect(received).toHaveLength(1)
+		expect(received[0].name).toBe('statement.xlsx')
+	})
+
+	it('passes .xls files to onFiles', async () => {
+		const onFiles = vi.fn()
+		render(<DropZone onFiles={onFiles} />)
+
+		const input = document.querySelector('input[type="file"]') as HTMLInputElement
+		await userEvent.upload(input, makeFile('statement.xls', 'application/vnd.ms-excel'))
+
+		expect(onFiles).toHaveBeenCalledOnce()
+		const received: File[] = onFiles.mock.calls[0][0]
+		expect(received).toHaveLength(1)
+		expect(received[0].name).toBe('statement.xls')
+	})
+
+	it('filters out files that are not csv/xlsx/xls', async () => {
+		const onFiles = vi.fn()
+		render(<DropZone onFiles={onFiles} />)
+
+		const input = document.querySelector('input[type="file"]') as HTMLInputElement
+		const xlsx = makeFile('bank.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+		const pdf = makeFile('notes.pdf', 'application/pdf')
+
+		await userEvent.upload(input, [xlsx, pdf])
+
+		const received: File[] = onFiles.mock.calls[0][0]
+		expect(received).toHaveLength(1)
+		expect(received[0].name).toBe('bank.xlsx')
+	})
+
+	it('shows instructional text mentioning supported formats', () => {
 		render(<DropZone onFiles={vi.fn()} />)
-		expect(screen.getByText(/drop csv files here/i)).toBeInTheDocument()
+		expect(screen.getByText(/csv|xlsx/i)).toBeInTheDocument()
 	})
 })

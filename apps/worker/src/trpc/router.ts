@@ -4,7 +4,9 @@ import { WorkersLogger } from 'workers-tagged-logger'
 import { z } from 'zod'
 
 import {
+	categories,
 	columnMappings,
+	insertCategorySchema,
 	insertColumnMappingSchema,
 	insertTransactionSchema,
 	transactions,
@@ -30,6 +32,25 @@ function chunks<T>(arr: T[], size: number): T[][] {
 export const appRouter = router({
 	health: router({
 		ping: publicProcedure.query(() => ({ pong: true })),
+	}),
+
+	categories: router({
+		list: publicProcedure.query(async ({ ctx }) => {
+			const rows = await ctx.db.select().from(categories).orderBy(categories.sortOrder)
+			return {
+				INCOME: rows.filter((c) => c.groupType === 'INCOME'),
+				FIXED: rows.filter((c) => c.groupType === 'FIXED'),
+				VARIABLE: rows.filter((c) => c.groupType === 'VARIABLE'),
+				IGNORED: rows.filter((c) => c.groupType === 'IGNORED'),
+			}
+		}),
+
+		create: publicProcedure
+			.input(insertCategorySchema.pick({ name: true, groupType: true }))
+			.mutation(async ({ input, ctx }) => {
+				const [created] = await ctx.db.insert(categories).values(input).returning()
+				return created
+			}),
 	}),
 
 	transactions: router({

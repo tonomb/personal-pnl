@@ -1,6 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { httpBatchLink } from '@trpc/client'
+import { ThemeProvider } from 'next-themes'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -31,10 +32,12 @@ if (!root) throw new Error('Root element not found')
 
 createRoot(root).render(
 	<StrictMode>
-		<trpc.Provider client={trpcClient} queryClient={queryClient}>
-			<QueryClientProvider client={queryClient}>
-				<RouterProvider router={router} />
-			</QueryClientProvider>
-		</trpc.Provider>
+		<ThemeProvider attribute="class" defaultTheme="light" disableTransitionOnChange>
+			<trpc.Provider client={trpcClient} queryClient={queryClient}>
+				<QueryClientProvider client={queryClient}>
+					<RouterProvider router={router} />
+				</QueryClientProvider>
+			</trpc.Provider>
+		</ThemeProvider>
 	</StrictMode>,
 )

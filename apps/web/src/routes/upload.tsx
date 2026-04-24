@@ -327,7 +327,7 @@ function UploadPage() {
 			)}
 
 			{fileMap.size > 0 && (
-				<ul className="space-y-4">
+				<ul className="space-y-4" aria-live="polite" aria-label="File upload status">
 					{[...fileMap.entries()].map(([name, status]) => (
 						<li key={name} className="space-y-2">
 							<div className="flex items-center gap-2">

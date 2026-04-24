@@ -30,7 +30,6 @@ export function DropZone({ onFiles, disabled }: DropZoneProps) {
 			}}
 			onDragLeave={() => setIsDragging(false)}
 			onDrop={(e) => {
-				console.log('[DropZone] onDrop fired')
 				e.preventDefault()
 				setIsDragging(false)
 				handleFiles(e.dataTransfer.files)

@@ -57,7 +57,7 @@ type FlatRow = MerchantRow | TxRow
 // Helpers
 // ---------------------------------------------------------------------------
 
-const GRID = 'grid-cols-[24px_minmax(0,1fr)_80px_110px_168px]'
+const GRID = 'grid-cols-[20px_minmax(0,1fr)_96px_148px] sm:grid-cols-[20px_minmax(0,1fr)_80px_100px_148px]'
 
 function formatCurrency(amount: number): string {
 	return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
@@ -75,6 +75,17 @@ function formatMonthLabel(month: string): string {
 	return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
 		new Date(y!, m! - 1, 1),
 	)
+}
+
+function getContrastColor(bg: string): string {
+	const hex = bg.replace('#', '')
+	if (hex.length !== 6) return '#ffffff'
+	const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+	const r = toLinear(parseInt(hex.slice(0, 2), 16) / 255)
+	const g = toLinear(parseInt(hex.slice(2, 4), 16) / 255)
+	const b = toLinear(parseInt(hex.slice(4, 6), 16) / 255)
+	const L = 0.2126 * r + 0.7152 * g + 0.0722 * b
+	return L > 0.35 ? '#111827' : '#ffffff'
 }
 
 // ---------------------------------------------------------------------------
@@ -165,7 +176,7 @@ function BulkAssignBar({
 	const GROUPS = ['INCOME', 'FIXED', 'VARIABLE', 'IGNORED'] as const
 
 	return (
-		<div className="flex items-center gap-2 rounded-lg border bg-background p-2 shadow-sm">
+		<div className="flex items-center gap-2 py-1">
 			<span className="shrink-0 text-sm text-muted-foreground">{selectedCount} selected</span>
 			<Select value={value} onValueChange={(v) => onValueChange(v as string)}>
 				<SelectTrigger className="w-52">
@@ -218,6 +229,9 @@ function MerchantHeaderRow({
 }) {
 	return (
 		<div
+			role="option"
+			aria-selected={isAllSelected || isSomeSelected}
+			aria-expanded={isExpanded}
 			className={cn(
 				'grid h-12 items-center border-b bg-muted/40 px-3',
 				GRID,
@@ -251,10 +265,10 @@ function MerchantHeaderRow({
 					<span className="block text-destructive">-{formatCurrency(row.totalDebits)}</span>
 				)}
 				{row.totalCredits > 0 && (
-					<span className="block text-green-600">+{formatCurrency(row.totalCredits)}</span>
+					<span className="block text-income">+{formatCurrency(row.totalCredits)}</span>
 				)}
 			</span>
-			<span />
+			<span className="hidden sm:block" />
 		</div>
 	)
 }
@@ -272,6 +286,8 @@ function TransactionRow({
 }) {
 	return (
 		<div
+			role="option"
+			aria-selected={isSelected}
 			className={cn(
 				'grid h-12 items-center border-b px-3',
 				GRID,
@@ -285,20 +301,20 @@ function TransactionRow({
 				onClick={(e: React.MouseEvent) => e.stopPropagation()}
 			/>
 			<span className="truncate pl-6 text-sm">{tx.description}</span>
-			<span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
+			<span className="hidden text-xs text-muted-foreground sm:block">{formatDate(tx.date)}</span>
 			<span
 				className={cn(
 					'text-right text-sm tabular-nums',
-					tx.type === 'DEBIT' ? 'text-destructive' : 'text-green-600',
+					tx.type === 'DEBIT' ? 'text-destructive' : 'text-income',
 				)}
 			>
 				{tx.type === 'DEBIT' ? '-' : '+'}{formatCurrency(tx.amount)}
 			</span>
-			<span>
+			<span className="hidden sm:block">
 				{tx.categoryId != null ? (
 					<Badge
 						variant="secondary"
-						style={tx.categoryColor ? { backgroundColor: tx.categoryColor, color: '#fff' } : undefined}
+						style={tx.categoryColor ? { backgroundColor: tx.categoryColor, color: getContrastColor(tx.categoryColor) } : undefined}
 					>
 						{tx.categoryName}
 					</Badge>
@@ -517,7 +533,7 @@ function CategorizePage() {
 	}
 
 	return (
-		<main className="flex h-screen flex-col">
+		<main className="flex h-full flex-col">
 			{/* Header */}
 			<div className="space-y-3 border-b p-4">
 				<div className="flex items-center justify-between">
@@ -550,18 +566,31 @@ function CategorizePage() {
 			<div className={cn('grid border-b px-3 py-2 text-xs text-muted-foreground', GRID)}>
 				<span />
 				<span>Description</span>
-				<span>Date</span>
+				<span className="hidden sm:block">Date</span>
 				<span className="text-right">Amount</span>
-				<span>Category</span>
+				<span className="hidden sm:block">Category</span>
 			</div>
 
 			{/* Virtual list */}
-			<div ref={parentRef} className="flex-1 overflow-y-auto">
+			<div
+				ref={parentRef}
+				className="flex-1 overflow-y-auto"
+				role="listbox"
+				aria-label="Transactions"
+				aria-activedescendant={flatRows.length > 0 ? `tx-row-${cursorIndex}` : undefined}
+			>
 				{flatRows.length === 0 ? (
 					<div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-						{txData.length === 0
-							? 'No transactions yet. Upload a CSV to get started.'
-							: 'No transactions match your filters.'}
+						{txData.length === 0 ? (
+							<span>
+								No statements uploaded yet.{' '}
+								<Link to="/upload" className="text-primary hover:underline">
+									Upload one →
+								</Link>
+							</span>
+						) : (
+							'Nothing matches your filters.'
+						)}
 					</div>
 				) : (
 					<div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
@@ -571,6 +600,7 @@ function CategorizePage() {
 							return (
 								<div
 									key={virtualItem.key}
+									id={`tx-row-${virtualItem.index}`}
 									style={{
 										position: 'absolute',
 										top: 0,

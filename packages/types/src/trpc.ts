@@ -8,6 +8,32 @@ export type TransactionWithCategory = Transaction & {
 	categoryColor: string | null
 }
 
+export type GroupedTransaction = {
+	description: string
+	count: number
+	totalAmount: number
+	categoryId: number | null
+	categoryName: string | null
+	categoryGroupType: string | null
+	categoryColor: string | null
+}
+
+export type TransactionListFilter = {
+	month?: string
+	categoryId?: number
+	uncategorized?: boolean
+}
+
+export type TransactionListInput = TransactionListFilter & {
+	limit?: number
+	offset?: number
+}
+
+export type TransactionListResult = {
+	rows: TransactionWithCategory[]
+	total: number
+}
+
 const t = initTRPC.create()
 
 const router = t.router
@@ -30,13 +56,31 @@ export const appRouter = router({
 					},
 			),
 		create: publicProcedure
-			.input((v: unknown) => v as { name: string; groupType: string })
+			.input((v: unknown) => v as { name: string; groupType: string; color?: string | null })
 			.mutation((): Category => null as unknown as Category),
+		update: publicProcedure
+			.input(
+				(v: unknown) =>
+					v as {
+						id: number
+						name?: string
+						groupType?: 'INCOME' | 'FIXED' | 'VARIABLE' | 'IGNORED'
+						color?: string | null
+						sortOrder?: number
+					},
+			)
+			.mutation((): Category => null as unknown as Category),
+		delete: publicProcedure
+			.input((v: unknown) => v as { id: number })
+			.mutation((): { deletedId: number } => ({ deletedId: 0 })),
 	}),
 	transactions: router({
 		list: publicProcedure
-			.input((v: unknown) => v as { month?: string })
-			.query((): TransactionWithCategory[] => null as unknown as TransactionWithCategory[]),
+			.input((v: unknown) => v as TransactionListInput)
+			.query((): TransactionListResult => null as unknown as TransactionListResult),
+		grouped: publicProcedure
+			.input((v: unknown) => v as TransactionListFilter | undefined)
+			.query((): GroupedTransaction[] => null as unknown as GroupedTransaction[]),
 		categorize: publicProcedure
 			.input((v: unknown) => v as { ids: string[]; categoryId: number | null })
 			.mutation((): { updated: number } => ({ updated: 0 })),

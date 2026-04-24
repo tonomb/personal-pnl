@@ -21,7 +21,7 @@ export const transactions = sqliteTable('transactions', {
 	description: text('description').notNull(),
 	amount: real('amount').notNull(), // always positive
 	type: text('type', { enum: ['DEBIT', 'CREDIT'] }).notNull(),
-	categoryId: integer('category_id').references(() => categories.id),
+	categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
 	sourceFile: text('source_file'),
 	rawRow: text('raw_row'), // JSON text
 	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()).notNull(),
@@ -54,6 +54,46 @@ export const transactionInputSchema = insertTransactionSchema.extend({
 
 export const insertColumnMappingSchema = createInsertSchema(columnMappings)
 export const selectColumnMappingSchema = createSelectSchema(columnMappings)
+
+// ---------------------------------------------------------------------------
+// tRPC input schemas (shared with frontend form validation)
+// ---------------------------------------------------------------------------
+
+export const monthFilterSchema = z.string().regex(/^\d{4}-\d{2}$/, 'Month must be YYYY-MM')
+
+export const transactionFilterSchema = z.object({
+	month: monthFilterSchema.optional(),
+	categoryId: z.number().int().optional(),
+	uncategorized: z.boolean().optional(),
+})
+
+export const transactionListInputSchema = transactionFilterSchema.extend({
+	limit: z.number().int().min(1).max(500).default(100),
+	offset: z.number().int().min(0).default(0),
+})
+
+export const transactionGroupedInputSchema = transactionFilterSchema.optional()
+
+export const categorizeInputSchema = z.object({
+	ids: z.array(z.string()).min(1).max(500),
+	categoryId: z.number().int().nullable(),
+})
+
+export const createCategoryInputSchema = insertCategorySchema.pick({
+	name: true,
+	groupType: true,
+	color: true,
+})
+
+export const updateCategoryInputSchema = z.object({
+	id: z.number().int(),
+	name: z.string().min(1).optional(),
+	groupType: z.enum(['INCOME', 'FIXED', 'VARIABLE', 'IGNORED']).optional(),
+	color: z.string().nullable().optional(),
+	sortOrder: z.number().int().optional(),
+})
+
+export const deleteCategoryInputSchema = z.object({ id: z.number().int() })
 
 // ---------------------------------------------------------------------------
 // TypeScript types (inferred from Drizzle)

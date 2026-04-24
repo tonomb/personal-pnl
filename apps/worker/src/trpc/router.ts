@@ -1,15 +1,20 @@
-import { initTRPC } from '@trpc/server'
-import { desc, eq, inArray, like } from 'drizzle-orm'
+import { initTRPC, TRPCError } from '@trpc/server'
+import { and, count, desc, eq, inArray, isNull, like, sql, type SQL } from 'drizzle-orm'
 import { WorkersLogger } from 'workers-tagged-logger'
 import { z } from 'zod'
 
 import {
 	categories,
+	categorizeInputSchema,
 	columnMappings,
-	insertCategorySchema,
+	createCategoryInputSchema,
+	deleteCategoryInputSchema,
 	insertColumnMappingSchema,
+	transactionGroupedInputSchema,
 	transactionInputSchema,
+	transactionListInputSchema,
 	transactions,
+	updateCategoryInputSchema,
 } from '@pnl/types'
 
 import type { TRPCContext } from './context'
@@ -46,18 +51,52 @@ export const appRouter = router({
 		}),
 
 		create: publicProcedure
-			.input(insertCategorySchema.pick({ name: true, groupType: true }))
+			.input(createCategoryInputSchema)
 			.mutation(async ({ input, ctx }) => {
 				const [created] = await ctx.db.insert(categories).values(input).returning()
 				return created
+			}),
+
+		update: publicProcedure
+			.input(updateCategoryInputSchema)
+			.mutation(async ({ input, ctx }) => {
+				const { id, ...patch } = input
+				const [updated] = await ctx.db
+					.update(categories)
+					.set(patch)
+					.where(eq(categories.id, id))
+					.returning()
+				if (!updated) {
+					throw new TRPCError({ code: 'NOT_FOUND', message: `Category ${id} not found` })
+				}
+				return updated
+			}),
+
+		delete: publicProcedure
+			.input(deleteCategoryInputSchema)
+			.mutation(async ({ input, ctx }) => {
+				const [deleted] = await ctx.db
+					.delete(categories)
+					.where(eq(categories.id, input.id))
+					.returning({ id: categories.id })
+				if (!deleted) {
+					throw new TRPCError({ code: 'NOT_FOUND', message: `Category ${input.id} not found` })
+				}
+				return { deletedId: deleted.id }
 			}),
 	}),
 
 	transactions: router({
 		list: publicProcedure
-			.input(z.object({ month: z.string().regex(/^\d{4}-\d{2}$/).optional() }))
+			.input(transactionListInputSchema)
 			.query(async ({ input, ctx }) => {
-				return ctx.db
+				const filters: SQL[] = []
+				if (input.month) filters.push(like(transactions.date, `${input.month}%`))
+				if (input.categoryId !== undefined) filters.push(eq(transactions.categoryId, input.categoryId))
+				if (input.uncategorized) filters.push(isNull(transactions.categoryId))
+				const whereClause = filters.length ? and(...filters) : undefined
+
+				const rows = await ctx.db
 					.select({
 						id: transactions.id,
 						date: transactions.date,
@@ -73,15 +112,105 @@ export const appRouter = router({
 					})
 					.from(transactions)
 					.leftJoin(categories, eq(transactions.categoryId, categories.id))
-					.where(input.month ? like(transactions.date, `${input.month}%`) : undefined)
+					.where(whereClause)
 					.orderBy(desc(transactions.date))
+					.limit(input.limit)
+					.offset(input.offset)
+
+				const [{ total }] = await ctx.db
+					.select({ total: count() })
+					.from(transactions)
+					.where(whereClause)
+
+				return { rows, total: total ?? 0 }
+			}),
+
+		grouped: publicProcedure
+			.input(transactionGroupedInputSchema)
+			.query(async ({ input, ctx }) => {
+				const filters: SQL[] = []
+				if (input?.month) filters.push(like(transactions.date, `${input.month}%`))
+				if (input?.categoryId !== undefined) filters.push(eq(transactions.categoryId, input.categoryId))
+				if (input?.uncategorized) filters.push(isNull(transactions.categoryId))
+				const whereClause = filters.length ? and(...filters) : undefined
+
+				const rows = await ctx.db
+					.select({
+						description: transactions.description,
+						count: count(),
+						totalAmount: sql<number>`SUM(${transactions.amount})`,
+					})
+					.from(transactions)
+					.where(whereClause)
+					.groupBy(transactions.description)
+					.orderBy(desc(count()))
+
+				const categoryCounts = await ctx.db
+					.select({
+						description: transactions.description,
+						categoryId: transactions.categoryId,
+						categoryName: categories.name,
+						categoryGroupType: categories.groupType,
+						categoryColor: categories.color,
+						cnt: count(),
+					})
+					.from(transactions)
+					.innerJoin(categories, eq(transactions.categoryId, categories.id))
+					.where(whereClause)
+					.groupBy(
+						transactions.description,
+						transactions.categoryId,
+						categories.name,
+						categories.groupType,
+						categories.color,
+					)
+
+				const modeByDesc = new Map<
+					string,
+					{
+						categoryId: number | null
+						categoryName: string | null
+						categoryGroupType: string | null
+						categoryColor: string | null
+					}
+				>()
+				const topCountByDesc = new Map<string, number>()
+				for (const row of categoryCounts) {
+					const prevTop = topCountByDesc.get(row.description) ?? -1
+					if (row.cnt > prevTop) {
+						topCountByDesc.set(row.description, row.cnt)
+						modeByDesc.set(row.description, {
+							categoryId: row.categoryId,
+							categoryName: row.categoryName,
+							categoryGroupType: row.categoryGroupType,
+							categoryColor: row.categoryColor,
+						})
+					} else if (row.cnt === prevTop) {
+						modeByDesc.set(row.description, {
+							categoryId: null,
+							categoryName: null,
+							categoryGroupType: null,
+							categoryColor: null,
+						})
+					}
+				}
+
+				return rows.map((r) => {
+					const mode = modeByDesc.get(r.description)
+					return {
+						description: r.description,
+						count: r.count,
+						totalAmount: Number(r.totalAmount ?? 0),
+						categoryId: mode?.categoryId ?? null,
+						categoryName: mode?.categoryName ?? null,
+						categoryGroupType: mode?.categoryGroupType ?? null,
+						categoryColor: mode?.categoryColor ?? null,
+					}
+				})
 			}),
 
 		categorize: publicProcedure
-			.input(z.object({
-				ids: z.array(z.string()).min(1).max(500),
-				categoryId: z.number().int().nullable(),
-			}))
+			.input(categorizeInputSchema)
 			.mutation(async ({ input, ctx }) => {
 				const startMs = Date.now()
 				const event: Record<string, unknown> = {

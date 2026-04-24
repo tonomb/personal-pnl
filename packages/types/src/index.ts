@@ -3,6 +3,7 @@ export type {
   AppRouter,
   CategoryTotal,
   GroupedTransaction,
+  KpiSummary,
   MonthGroup,
   MonthlyPnL,
   PnLReport,

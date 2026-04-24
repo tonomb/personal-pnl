@@ -105,6 +105,10 @@ export const pnlGetMonthInputSchema = z.object({
   month: monthFilterSchema
 });
 
+export const pnlGetKpisInputSchema = z.object({
+  month: monthFilterSchema
+});
+
 // ---------------------------------------------------------------------------
 // TypeScript types (inferred from Drizzle)
 // ---------------------------------------------------------------------------

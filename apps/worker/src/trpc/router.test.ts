@@ -793,3 +793,219 @@ describe("pnl.getMonth", () => {
     expect(result.savingsRate).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// pnl.getKpis
+// ---------------------------------------------------------------------------
+
+describe("pnl.getKpis", () => {
+  it("returns IN_THE_GREEN when net income is positive", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "k-1a", date: "2024-03-01", amount: 3000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-1b", date: "2024-03-01", amount: 1000, type: "DEBIT", categoryId: fix!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.net).toBe(2000);
+    expect(result.netLabel).toBe("IN_THE_GREEN");
+  });
+
+  it("returns IN_THE_RED when net income is negative", async () => {
+    const db = makeDb();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    await db
+      .insert(transactions)
+      .values([makePnlTx({ id: "k-2a", date: "2024-03-01", amount: 500, type: "DEBIT", categoryId: fix!.id })]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.net).toBe(-500);
+    expect(result.netLabel).toBe("IN_THE_RED");
+  });
+
+  it("returns NEUTRAL when net is exactly zero", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "k-3a", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-3b", date: "2024-03-01", amount: 1000, type: "DEBIT", categoryId: fix!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.net).toBe(0);
+    expect(result.netLabel).toBe("NEUTRAL");
+  });
+
+  it("returns HEALTHY savingsLabel when savings rate is >= 20%", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    // net = 800, income = 1000, savingsRate = 0.8
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "k-4a", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-4b", date: "2024-03-01", amount: 200, type: "DEBIT", categoryId: fix!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.savingsLabel).toBe("HEALTHY");
+  });
+
+  it("returns WATCH savingsLabel when savings rate is 10–19%", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    // net = 150, income = 1000, savingsRate = 0.15
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "k-5a", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-5b", date: "2024-03-01", amount: 850, type: "DEBIT", categoryId: fix!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.savingsLabel).toBe("WATCH");
+  });
+
+  it("returns DANGER savingsLabel when savings rate is below 10%", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    // net = 50, income = 1000, savingsRate = 0.05
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "k-6a", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-6b", date: "2024-03-01", amount: 950, type: "DEBIT", categoryId: fix!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.savingsLabel).toBe("DANGER");
+  });
+
+  it("returns null savingsLabel when there is no income", async () => {
+    const db = makeDb();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    await db
+      .insert(transactions)
+      .values([makePnlTx({ id: "k-7a", date: "2024-03-01", amount: 500, type: "DEBIT", categoryId: fix!.id })]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.savingsRate).toBeNull();
+    expect(result.savingsLabel).toBeNull();
+  });
+
+  it("returns the biggest expense category by total across fixed and variable", async () => {
+    const db = makeDb();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    const [vrb] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "k-8a", date: "2024-03-01", amount: 1200, type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "k-8b", date: "2024-03-01", amount: 300, type: "DEBIT", categoryId: vrb!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.biggestExpense).toEqual({ name: "Rent", total: 1200 });
+  });
+
+  it("returns null biggestExpense when there are no expense transactions", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    await db
+      .insert(transactions)
+      .values([makePnlTx({ id: "k-9a", date: "2024-03-01", amount: 2000, type: "CREDIT", categoryId: inc!.id })]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.biggestExpense).toBeNull();
+  });
+
+  it("returns BETTER when current net exceeds prior month net", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    // Feb: net = 500 (1000 - 500); Mar: net = 800 (1000 - 200) → delta = +300
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "k-10a", date: "2024-02-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-10b", date: "2024-02-01", amount: 500, type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "k-10c", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-10d", date: "2024-03-01", amount: 200, type: "DEBIT", categoryId: fix!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.vsLastMonth?.delta).toBe(300);
+    expect(result.vsLastMonth?.label).toBe("BETTER");
+  });
+
+  it("returns WORSE when current net is less than prior month net", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    // Feb: net = 800; Mar: net = 300 → delta = -500
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "k-11a", date: "2024-02-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-11b", date: "2024-02-01", amount: 200, type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "k-11c", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-11d", date: "2024-03-01", amount: 700, type: "DEBIT", categoryId: fix!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.vsLastMonth?.delta).toBe(-500);
+    expect(result.vsLastMonth?.label).toBe("WORSE");
+  });
+
+  it("returns SAME when current net equals prior month net", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "k-12a", date: "2024-02-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-12b", date: "2024-02-01", amount: 600, type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "k-12c", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-12d", date: "2024-03-01", amount: 600, type: "DEBIT", categoryId: fix!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.vsLastMonth?.delta).toBe(0);
+    expect(result.vsLastMonth?.label).toBe("SAME");
+  });
+
+  it("returns null vsLastMonth when there is no data for the prior month", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    await db
+      .insert(transactions)
+      .values([makePnlTx({ id: "k-13a", date: "2024-03-01", amount: 2000, type: "CREDIT", categoryId: inc!.id })]);
+
+    const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
+
+    expect(result.vsLastMonth).toBeNull();
+  });
+});

@@ -1,0 +1,14 @@
+pre-commit:
+  parallel: true
+  commands:
+    oxlint:
+      glob: "**/*.{ts,tsx,js,jsx}"
+      run: oxlint --fix {staged_files}
+    prettier:
+      glob: "**/*.{ts,tsx,js,jsx}"
+      run: prettier --check {staged_files}
+
+pre-push:
+  commands:
+    test:
+      run: pnpm test

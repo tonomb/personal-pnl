@@ -192,6 +192,54 @@ Here are some key commands:
 
 For a complete list of available commands, run `just` or see the [Justfile](./Justfile) for more details.
 
+## Linting, Formatting & Git Hooks
+
+This project uses [Oxlint](https://oxc.rs/docs/guide/usage/linter) for linting and [oxfmt](https://github.com/nicolo-ribaudo/oxfmt) for formatting, enforced automatically via [Lefthook](https://lefthook.dev) git hooks.
+
+### npm scripts
+
+| Command | Description |
+|---|---|
+| `pnpm lint` | Run Oxlint on the entire codebase |
+| `pnpm format` | Auto-fix formatting with oxfmt |
+| `pnpm format:check` | Check formatting without modifying files |
+| `pnpm lint:staged` | Run pre-commit checks on staged files (mirrors the hook) |
+
+### Git hooks
+
+**Pre-commit** — runs automatically on every `git commit`:
+- Oxlint with `--fix` on staged `.ts/.tsx/.js/.jsx` files (auto-fixes what it can; fails the commit on remaining violations)
+- oxfmt `--check` on staged files (fails if formatting is needed — run `pnpm format` to fix)
+
+Both checks run in parallel via Lefthook for speed (target: <2 s for typical commits).
+
+**Pre-push** — runs automatically before every `git push`:
+- Full test suite via `pnpm test`
+- Push is blocked if any tests fail
+
+### Hook setup
+
+Hooks are installed automatically when you run `pnpm install`. If you need to reinstall them manually:
+
+```bash
+pnpm exec lefthook install
+```
+
+### Bypassing hooks
+
+**Never** use `--no-verify` to skip hooks. If a hook fails, fix the underlying issue:
+
+```bash
+# Fix lint issues automatically
+pnpm lint
+
+# Fix formatting
+pnpm format
+
+# Then re-commit
+git add . && git commit -m "your message"
+```
+
 ## GitHub Actions
 
 This repository includes GitHub Actions workflows defined in the `.github/workflows` directory:

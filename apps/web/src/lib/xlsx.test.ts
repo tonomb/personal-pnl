@@ -15,7 +15,7 @@ function makeWorkbookBuffer(sheets: { name: string; data: (string | number)[][] 
   // XLSX.write with type:'array' may return a plain number[] or Uint8Array depending on env
   const raw = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as Uint8Array | number[];
   const uint8 = raw instanceof Uint8Array ? raw : new Uint8Array(raw as number[]);
-  return uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength);
+  return uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength) as ArrayBuffer;
 }
 
 const SINGLE_SHEET_DATA = [

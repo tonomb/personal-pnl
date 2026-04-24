@@ -8,6 +8,13 @@
       "when": 1775612895905,
       "tag": "0000_wooden_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1776994281713,
+      "tag": "0001_silly_xorn",
+      "breakpoints": true
     }
   ]
 }

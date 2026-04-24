@@ -1,9 +1,9 @@
-export * from './schema'
+export * from "./schema";
 export type {
-	AppRouter,
-	GroupedTransaction,
-	TransactionListFilter,
-	TransactionListInput,
-	TransactionListResult,
-	TransactionWithCategory,
-} from './trpc'
+  AppRouter,
+  GroupedTransaction,
+  TransactionListFilter,
+  TransactionListInput,
+  TransactionListResult,
+  TransactionWithCategory
+} from "./trpc";

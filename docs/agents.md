@@ -28,13 +28,14 @@ This project uses [shadcn/ui](https://ui.shadcn.com) with Tailwind CSS v4.
 
 All monetary computation lives in `packages/engine` (`@pnl/engine`):
 
-| What | Where |
-|---|---|
-| Helper functions (`add`, `subtract`, `multiply`, `divide`, `safeDivide`, `toStorable`, `toDisplay`) | `packages/engine/src/money.ts` |
-| P&L types (`PnlInput`, `PnlResult`) | `packages/engine/src/types/index.ts` |
-| P&L computation (`computePnl`) | `packages/engine/src/pnl.ts` |
+| What                                                                                                | Where                                |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| Helper functions (`add`, `subtract`, `multiply`, `divide`, `safeDivide`, `toStorable`, `toDisplay`) | `packages/engine/src/money.ts`       |
+| P&L types (`PnlInput`, `PnlResult`)                                                                 | `packages/engine/src/types/index.ts` |
+| P&L computation (`computePnl`)                                                                      | `packages/engine/src/pnl.ts`         |
 
 **Rules:**
+
 - Import and use `add()`, `subtract()`, etc. from `@pnl/engine` — never operate on raw numbers directly.
 - `safeDivide(numerator, denominator)` returns `null` when denominator is zero — handle the null (no division-by-zero crashes).
 - Before writing to D1 call `toStorable(decimal)` → returns a plain `number` rounded to 2 decimal places.
@@ -50,10 +51,10 @@ The worker has its own matching router in `apps/worker/src/trpc/router.ts` (with
 
 ## Path aliases
 
-| Alias | Resolves to |
-|---|---|
-| `@/*` (in web) | `apps/web/src/*` |
-| `@pnl/types` | `packages/types/src` |
+| Alias          | Resolves to          |
+| -------------- | -------------------- |
+| `@/*` (in web) | `apps/web/src/*`     |
+| `@pnl/types`   | `packages/types/src` |
 
 ## Commands
 

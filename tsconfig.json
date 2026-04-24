@@ -1,10 +1,10 @@
 {
-	"extends": "@repo/typescript-config/lib.json",
-	"compilerOptions": {
-		"paths": {
-			"@pnl/types": ["./packages/types/src"],
-			"@pnl/types/*": ["./packages/types/src/*"]
-		}
-	},
-	"include": ["./*.ts"]
+  "extends": "@repo/typescript-config/lib.json",
+  "compilerOptions": {
+    "paths": {
+      "@pnl/types": ["./packages/types/src"],
+      "@pnl/types/*": ["./packages/types/src/*"]
+    }
+  },
+  "include": ["./*.ts"]
 }

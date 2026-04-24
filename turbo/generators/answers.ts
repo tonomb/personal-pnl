@@ -1,29 +1,29 @@
-import { z } from 'zod'
+import { z } from "zod";
 
-export type Paths = z.infer<typeof Paths>
+export type Paths = z.infer<typeof Paths>;
 export const Paths = z.object({
-	cwd: z.string(),
-	root: z.string(),
-	workspace: z.string(),
-})
+  cwd: z.string(),
+  root: z.string(),
+  workspace: z.string()
+});
 
-export type Turbo = z.infer<typeof Turbo>
+export type Turbo = z.infer<typeof Turbo>;
 export const Turbo = z.object({
-	paths: Paths,
-})
+  paths: Paths
+});
 
-export type NewWorkerAnswers = z.infer<typeof NewWorkerAnswers>
+export type NewWorkerAnswers = z.infer<typeof NewWorkerAnswers>;
 export const NewWorkerAnswers = z.object({
-	name: z.string(),
-	turbo: Turbo,
-})
+  name: z.string(),
+  turbo: Turbo
+});
 
-export type NewPackageAnswers = z.infer<typeof NewPackageAnswers>
+export type NewPackageAnswers = z.infer<typeof NewPackageAnswers>;
 export const NewPackageAnswers = z.object({
-	name: z.string(),
-	turbo: Turbo,
-	usedInWorkers: z.boolean().optional(),
-})
+  name: z.string(),
+  turbo: Turbo,
+  usedInWorkers: z.boolean().optional()
+});
 
-export type Answers = z.infer<typeof Answers>
-export const Answers = z.union([NewWorkerAnswers, NewPackageAnswers])
+export type Answers = z.infer<typeof Answers>;
+export const Answers = z.union([NewWorkerAnswers, NewPackageAnswers]);

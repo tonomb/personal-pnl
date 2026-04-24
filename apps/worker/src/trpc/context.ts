@@ -1,15 +1,15 @@
-import { drizzle } from 'drizzle-orm/d1'
+import { drizzle } from "drizzle-orm/d1";
 
-import * as schema from '@pnl/types'
+import * as schema from "@pnl/types";
 
-import type { Env } from '../context'
+import type { Env } from "../context";
 
-type DB = ReturnType<typeof drizzle<typeof schema>>
+type DB = ReturnType<typeof drizzle<typeof schema>>;
 
 export type TRPCContext = {
-	db: DB
-}
+  db: DB;
+};
 
 export function createContext(env: Env): TRPCContext {
-	return { db: drizzle(env.DB, { schema }) }
+  return { db: drizzle(env.DB, { schema }) };
 }

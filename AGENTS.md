@@ -117,6 +117,10 @@ Do NOT hand-write components from scratch. The CLI handles `@base-ui/react` wiri
 - `Select.Root` uses `onValueChange={(val) => ...}` where `val` is typed as the item's value type (string by default)
 - `Checkbox.Root` supports `indeterminate` prop; use `onCheckedChange` (not `onChange`)
 
+## Git Hooks
+
+Never use `git commit --no-verify` or `git push --no-verify` — hooks must run to confirm everything works. If a hook fails, fix the issue rather than bypassing it.
+
 ## Key Constraints
 
 - TypeScript configs must use fully qualified paths: `@repo/typescript-config/base.json`

@@ -1,109 +1,111 @@
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
-import { z } from 'zod'
+import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import { z } from "zod";
 
 // ---------------------------------------------------------------------------
 // Tables
 // ---------------------------------------------------------------------------
 
-export const categories = sqliteTable('categories', {
-	id: integer('id').primaryKey({ autoIncrement: true }),
-	name: text('name').notNull(),
-	groupType: text('group_type', { enum: ['INCOME', 'FIXED', 'VARIABLE', 'IGNORED'] }).notNull(),
-	isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
-	color: text('color'),
-	sortOrder: integer('sort_order').notNull().default(0),
-})
+export const categories = sqliteTable("categories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  groupType: text("group_type", { enum: ["INCOME", "FIXED", "VARIABLE", "IGNORED"] }).notNull(),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  color: text("color"),
+  sortOrder: integer("sort_order").notNull().default(0)
+});
 
-export const transactions = sqliteTable('transactions', {
-	id: text('id').primaryKey(), // UUID
-	date: text('date').notNull(), // YYYY-MM-DD
-	description: text('description').notNull(),
-	amount: real('amount').notNull(), // always positive
-	type: text('type', { enum: ['DEBIT', 'CREDIT'] }).notNull(),
-	categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
-	sourceFile: text('source_file'),
-	rawRow: text('raw_row'), // JSON text
-	createdAt: text('created_at').$defaultFn(() => new Date().toISOString()).notNull(),
-})
+export const transactions = sqliteTable("transactions", {
+  id: text("id").primaryKey(), // UUID
+  date: text("date").notNull(), // YYYY-MM-DD
+  description: text("description").notNull(),
+  amount: real("amount").notNull(), // always positive
+  type: text("type", { enum: ["DEBIT", "CREDIT"] }).notNull(),
+  categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+  sourceFile: text("source_file"),
+  rawRow: text("raw_row"), // JSON text
+  createdAt: text("created_at")
+    .$defaultFn(() => new Date().toISOString())
+    .notNull()
+});
 
-export const columnMappings = sqliteTable('column_mappings', {
-	id: integer('id').primaryKey({ autoIncrement: true }),
-	fileFingerprint: text('file_fingerprint').notNull().unique(),
-	dateCol: text('date_col').notNull(),
-	descriptionCol: text('description_col').notNull(),
-	amountCol: text('amount_col'),
-	debitCol: text('debit_col'),
-	creditCol: text('credit_col'),
-})
+export const columnMappings = sqliteTable("column_mappings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  fileFingerprint: text("file_fingerprint").notNull().unique(),
+  dateCol: text("date_col").notNull(),
+  descriptionCol: text("description_col").notNull(),
+  amountCol: text("amount_col"),
+  debitCol: text("debit_col"),
+  creditCol: text("credit_col")
+});
 
 // ---------------------------------------------------------------------------
 // Zod schemas (derived from Drizzle)
 // ---------------------------------------------------------------------------
 
-export const insertCategorySchema = createInsertSchema(categories)
-export const selectCategorySchema = createSelectSchema(categories)
+export const insertCategorySchema = createInsertSchema(categories);
+export const selectCategorySchema = createSelectSchema(categories);
 
-export const insertTransactionSchema = createInsertSchema(transactions)
-export const selectTransactionSchema = createSelectSchema(transactions)
+export const insertTransactionSchema = createInsertSchema(transactions);
+export const selectTransactionSchema = createSelectSchema(transactions);
 
 export const transactionInputSchema = insertTransactionSchema.extend({
-	date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
-	amount: z.number().positive('Amount must be positive'),
-})
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
+  amount: z.number().positive("Amount must be positive")
+});
 
-export const insertColumnMappingSchema = createInsertSchema(columnMappings)
-export const selectColumnMappingSchema = createSelectSchema(columnMappings)
+export const insertColumnMappingSchema = createInsertSchema(columnMappings);
+export const selectColumnMappingSchema = createSelectSchema(columnMappings);
 
 // ---------------------------------------------------------------------------
 // tRPC input schemas (shared with frontend form validation)
 // ---------------------------------------------------------------------------
 
-export const monthFilterSchema = z.string().regex(/^\d{4}-\d{2}$/, 'Month must be YYYY-MM')
+export const monthFilterSchema = z.string().regex(/^\d{4}-\d{2}$/, "Month must be YYYY-MM");
 
 export const transactionFilterSchema = z.object({
-	month: monthFilterSchema.optional(),
-	categoryId: z.number().int().optional(),
-	uncategorized: z.boolean().optional(),
-})
+  month: monthFilterSchema.optional(),
+  categoryId: z.number().int().optional(),
+  uncategorized: z.boolean().optional()
+});
 
 export const transactionListInputSchema = transactionFilterSchema.extend({
-	limit: z.number().int().min(1).max(500).default(100),
-	offset: z.number().int().min(0).default(0),
-})
+  limit: z.number().int().min(1).max(500).default(100),
+  offset: z.number().int().min(0).default(0)
+});
 
-export const transactionGroupedInputSchema = transactionFilterSchema.optional()
+export const transactionGroupedInputSchema = transactionFilterSchema.optional();
 
 export const categorizeInputSchema = z.object({
-	ids: z.array(z.string()).min(1).max(500),
-	categoryId: z.number().int().nullable(),
-})
+  ids: z.array(z.string()).min(1).max(500),
+  categoryId: z.number().int().nullable()
+});
 
 export const createCategoryInputSchema = insertCategorySchema.pick({
-	name: true,
-	groupType: true,
-	color: true,
-})
+  name: true,
+  groupType: true,
+  color: true
+});
 
 export const updateCategoryInputSchema = z.object({
-	id: z.number().int(),
-	name: z.string().min(1).optional(),
-	groupType: z.enum(['INCOME', 'FIXED', 'VARIABLE', 'IGNORED']).optional(),
-	color: z.string().nullable().optional(),
-	sortOrder: z.number().int().optional(),
-})
+  id: z.number().int(),
+  name: z.string().min(1).optional(),
+  groupType: z.enum(["INCOME", "FIXED", "VARIABLE", "IGNORED"]).optional(),
+  color: z.string().nullable().optional(),
+  sortOrder: z.number().int().optional()
+});
 
-export const deleteCategoryInputSchema = z.object({ id: z.number().int() })
+export const deleteCategoryInputSchema = z.object({ id: z.number().int() });
 
 // ---------------------------------------------------------------------------
 // TypeScript types (inferred from Drizzle)
 // ---------------------------------------------------------------------------
 
-export type Category = typeof categories.$inferSelect
-export type NewCategory = typeof categories.$inferInsert
+export type Category = typeof categories.$inferSelect;
+export type NewCategory = typeof categories.$inferInsert;
 
-export type Transaction = typeof transactions.$inferSelect
-export type NewTransaction = typeof transactions.$inferInsert
+export type Transaction = typeof transactions.$inferSelect;
+export type NewTransaction = typeof transactions.$inferInsert;
 
-export type ColumnMapping = typeof columnMappings.$inferSelect
-export type NewColumnMapping = typeof columnMappings.$inferInsert
+export type ColumnMapping = typeof columnMappings.$inferSelect;
+export type NewColumnMapping = typeof columnMappings.$inferInsert;

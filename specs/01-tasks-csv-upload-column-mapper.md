@@ -1,24 +1,28 @@
 ## Relevant Files
 
 ### Backend
-- `apps/worker/vitest.config.ts` - Worker vitest config using `@cloudflare/vitest-pool-workers` *(create)*
+
+- `apps/worker/vitest.config.ts` - Worker vitest config using `@cloudflare/vitest-pool-workers` _(create)_
 - `apps/worker/src/trpc/router.ts` - Add `transactions.getMapping` and `transactions.upload` procedures
-- `apps/worker/src/trpc/router.test.ts` - Integration tests for both procedures against local D1 *(create)*
+- `apps/worker/src/trpc/router.test.ts` - Integration tests for both procedures against local D1 _(create)_
 - `packages/types/src/trpc.ts` - Update AppRouter stub to mirror new procedures
 
 ### Frontend — Utilities
-- `apps/web/src/lib/csv.ts` - Pure utility functions: fingerprint, transaction ID hash, amount parser *(create)*
-- `apps/web/src/lib/csv.test.ts` - Unit tests for all three utilities *(create)*
-- `apps/web/vitest.config.ts` - Frontend vitest config (jsdom environment) *(create)*
+
+- `apps/web/src/lib/csv.ts` - Pure utility functions: fingerprint, transaction ID hash, amount parser _(create)_
+- `apps/web/src/lib/csv.test.ts` - Unit tests for all three utilities _(create)_
+- `apps/web/vitest.config.ts` - Frontend vitest config (jsdom environment) _(create)_
 
 ### Frontend — Components
-- `apps/web/src/components/upload/DropZone.tsx` - Drag-and-drop / file picker component *(create)*
-- `apps/web/src/components/upload/DropZone.test.tsx` - Tests for file filtering and onFiles callback *(create)*
-- `apps/web/src/components/upload/ColumnMapper.tsx` - Column mapping UI with live preview table *(create)*
-- `apps/web/src/components/upload/ColumnMapper.test.tsx` - Tests for confirm gating and mapping output *(create)*
+
+- `apps/web/src/components/upload/DropZone.tsx` - Drag-and-drop / file picker component _(create)_
+- `apps/web/src/components/upload/DropZone.test.tsx` - Tests for file filtering and onFiles callback _(create)_
+- `apps/web/src/components/upload/ColumnMapper.tsx` - Column mapping UI with live preview table _(create)_
+- `apps/web/src/components/upload/ColumnMapper.test.tsx` - Tests for confirm gating and mapping output _(create)_
 - `apps/web/src/routes/upload.tsx` - Main upload page; replace stub with full state machine
 
 ### Notes
+
 - **Backend tests** use `@cloudflare/vitest-pool-workers` + Miniflare — this gives a real in-memory D1 instance, so no mocking is needed. Use `env.DB` from the `cloudflare:test` helper.
 - **Frontend utility tests** use a plain node or jsdom environment — pure functions, no DOM needed.
 - **Frontend component tests** use `@testing-library/react` + jsdom.
@@ -99,7 +103,7 @@
     - `parseAmount('(500.00)')` → `{ amount: 500, type: 'DEBIT' }`
     - `parseAmount('-500.00')` → `{ amount: 500, type: 'DEBIT' }`
     - `parseAmount('1234.56')` → `{ amount: 1234.56, type: 'CREDIT' }`
-    Run → all fail (function not exported)
+      Run → all fail (function not exported)
   - [ ] 12.2 **GREEN** — Export `parseAmount` in `csv.ts`; implement stripping `$,` whitespace, treating `(n)` and `-n` as DEBIT, positive as CREDIT; run → all four pass
 
 ---

@@ -1,31 +1,31 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "pnl-api",
-	"main": "src/pnl-api.app.ts",
-	"compatibility_date": "2025-09-20",
-	"compatibility_flags": ["nodejs_compat"],
-	"dev": {
-		"port": 8787
-	},
-	"routes": [],
-"upload_source_maps": true,
-	"observability": {
-		"enabled": true,
-		"logs": {
-			"enabled": true,
-			"head_sampling_rate": 1 // 100%
-		}
-	},
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "personal-pnl",
-			"database_id": "64155aee-5a3e-4e8d-8f08-2fcfce25bf9f",
-			"migrations_dir": "../../packages/types/drizzle"
-		}
-	],
-	"vars": {
-		"ENVIRONMENT": "development", // overridden during deployment
-		"SENTRY_RELEASE": "unknown" // overridden during deployment
-	}
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pnl-api",
+  "main": "src/pnl-api.app.ts",
+  "compatibility_date": "2025-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "dev": {
+    "port": 8787
+  },
+  "routes": [],
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1 // 100%
+    }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "personal-pnl",
+      "database_id": "64155aee-5a3e-4e8d-8f08-2fcfce25bf9f",
+      "migrations_dir": "../../packages/types/drizzle"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "development", // overridden during deployment
+    "SENTRY_RELEASE": "unknown" // overridden during deployment
+  }
 }

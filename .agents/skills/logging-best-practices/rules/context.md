@@ -21,51 +21,51 @@ High dimensionality means your events have many fields (20-100+). More dimension
 ```typescript
 const wideEvent = {
   // Timing
-  timestamp: '2024-09-08T06:14:05.680Z',
+  timestamp: "2024-09-08T06:14:05.680Z",
   duration_ms: 268,
 
   // Request context
-  method: 'POST',
-  path: '/checkout',
-  requestId: 'req_abc123',
+  method: "POST",
+  path: "/checkout",
+  requestId: "req_abc123",
 
   // Infrastructure
-  service: 'checkout-service',
-  version: '2.4.1',
-  region: 'us-east-1',
-  commit_hash: '690de31f',
+  service: "checkout-service",
+  version: "2.4.1",
+  region: "us-east-1",
+  commit_hash: "690de31f",
 
   // User context (HIGH CARDINALITY - millions of unique values)
   user: {
-    id: 'user_456',
-    subscription: 'premium',
+    id: "user_456",
+    subscription: "premium",
     account_age_days: 847,
-    lifetime_value_cents: 284700,
+    lifetime_value_cents: 284700
   },
 
   // Business context
   cart: {
-    id: 'cart_xyz',
+    id: "cart_xyz",
     item_count: 3,
     total_cents: 15999,
-    coupon_applied: 'SAVE20',
+    coupon_applied: "SAVE20"
   },
 
   // Payment details
   payment: {
-    method: 'card',
-    provider: 'stripe',
-    latency_ms: 189,
+    method: "card",
+    provider: "stripe",
+    latency_ms: 189
   },
 
   // Feature flags - crucial for debugging rollouts
   feature_flags: {
-    new_checkout_flow: true,
+    new_checkout_flow: true
   },
 
   // Outcome
   status_code: 200,
-  outcome: 'success',
+  outcome: "success"
 };
 ```
 
@@ -75,32 +75,32 @@ Include business-specific context, not just technical details. User subscription
 
 ```typescript
 const wideEvent = {
-  requestId: 'req_123',
-  method: 'POST',
-  path: '/checkout',
+  requestId: "req_123",
+  method: "POST",
+  path: "/checkout",
   status_code: 500,
 
   // Business context that changes response priority
   user: {
-    id: 'user_456',
-    subscription: 'enterprise',        // High-value customer
-    account_age_days: 1247,            // Long-term customer
-    lifetime_value_cents: 4850000,     // $48,500 LTV
+    id: "user_456",
+    subscription: "enterprise", // High-value customer
+    account_age_days: 1247, // Long-term customer
+    lifetime_value_cents: 4850000 // $48,500 LTV
   },
 
   cart: {
-    total_cents: 249900,               // $2,499 order
-    contains_annual_plan: true,        // Recurring revenue at stake
+    total_cents: 249900, // $2,499 order
+    contains_annual_plan: true // Recurring revenue at stake
   },
 
   feature_flags: {
-    new_payment_flow: true,            // Was new code involved?
+    new_payment_flow: true // Was new code involved?
   },
 
   error: {
-    type: 'PaymentError',
-    code: 'card_declined',
-  },
+    type: "PaymentError",
+    code: "card_declined"
+  }
 };
 // Now you KNOW this is critical: Enterprise customer, $48.5k LTV,
 // trying to make a $2.5k purchase, and new_payment_flow is enabled
@@ -135,13 +135,13 @@ const wideEvent = {
 
     // Runtime
     node_version: process.version,
-    runtime: process.env.AWS_EXECUTION_ENV || 'node',
+    runtime: process.env.AWS_EXECUTION_ENV || "node",
     memory_limit_mb: process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE,
 
     // Environment type
     environment: process.env.NODE_ENV || process.env.ENVIRONMENT,
-    stage: process.env.STAGE,
-  },
+    stage: process.env.STAGE
+  }
 };
 ```
 

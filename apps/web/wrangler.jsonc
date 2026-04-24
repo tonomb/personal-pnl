@@ -1,11 +1,11 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "pnl-web",
-	"assets": { "directory": "./dist" },
-	"compatibility_date": "2025-09-20",
-	"compatibility_flags": ["nodejs_compat"],
-	"observability": { "enabled": true },
-	"vars": {
-		"ENVIRONMENT": "development" // overridden during deployment
-	}
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pnl-web",
+  "assets": { "directory": "./dist" },
+  "compatibility_date": "2025-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "ENVIRONMENT": "development" // overridden during deployment
+  }
 }

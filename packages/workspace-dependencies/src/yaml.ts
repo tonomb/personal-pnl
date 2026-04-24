@@ -1,1 +1,1 @@
-export { default as YAML } from 'yaml'
+export { default as YAML } from "yaml";

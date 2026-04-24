@@ -114,9 +114,7 @@
       "indexes": {
         "column_mappings_file_fingerprint_unique": {
           "name": "column_mappings_file_fingerprint_unique",
-          "columns": [
-            "file_fingerprint"
-          ],
+          "columns": ["file_fingerprint"],
           "isUnique": true
         }
       },
@@ -198,12 +196,8 @@
           "name": "transactions_category_id_categories_id_fk",
           "tableFrom": "transactions",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }

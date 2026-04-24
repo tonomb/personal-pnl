@@ -34,6 +34,36 @@ export type TransactionListResult = {
   total: number;
 };
 
+export type CategoryTotal = {
+  categoryId: number;
+  categoryName: string;
+  total: number;
+};
+
+export type MonthGroup = {
+  total: number;
+  items: CategoryTotal[];
+};
+
+export type MonthlyPnL = {
+  month: string;
+  income: MonthGroup;
+  fixed: MonthGroup;
+  variable: MonthGroup;
+  ignored: MonthGroup;
+  net: number;
+  savingsRate: number | null;
+};
+
+export type PnLReport = {
+  months: MonthlyPnL[];
+  ytdIncome: number;
+  ytdExpenses: number;
+  ytdNet: number;
+  avgMonthlySavingsRate: number | null;
+  uncategorizedCount: number;
+};
+
 const t = initTRPC.create();
 
 const router = t.router;
@@ -97,6 +127,14 @@ export const appRouter = router({
           }
       )
       .mutation((): { inserted: number; duplicates: number } => ({ inserted: 0, duplicates: 0 }))
+  }),
+  pnl: router({
+    getReport: publicProcedure
+      .input((v: unknown) => v as { year: number })
+      .query((): PnLReport => null as unknown as PnLReport),
+    getMonth: publicProcedure
+      .input((v: unknown) => v as { month: string })
+      .query((): MonthlyPnL => null as unknown as MonthlyPnL)
   })
 });
 

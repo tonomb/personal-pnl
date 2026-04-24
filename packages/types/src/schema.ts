@@ -97,6 +97,14 @@ export const updateCategoryInputSchema = z.object({
 
 export const deleteCategoryInputSchema = z.object({ id: z.number().int() });
 
+export const pnlGetReportInputSchema = z.object({
+  year: z.number().int().min(2000).max(2100)
+});
+
+export const pnlGetMonthInputSchema = z.object({
+  month: monthFilterSchema
+});
+
 // ---------------------------------------------------------------------------
 // TypeScript types (inferred from Drizzle)
 // ---------------------------------------------------------------------------

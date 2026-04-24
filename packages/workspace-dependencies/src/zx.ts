@@ -1,1 +1,1 @@
-export * from 'zx'
+export * from "zx";

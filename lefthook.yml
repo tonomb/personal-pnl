@@ -3,10 +3,10 @@ pre-commit:
   commands:
     oxlint:
       glob: "**/*.{ts,tsx,js,jsx}"
-      run: oxlint --fix {staged_files}
+      run: pnpm exec oxlint --fix {staged_files}
     oxformat:
       glob: "**/*.{ts,tsx,js,jsx}"
-      run: oxfmt --check {staged_files}
+      run: pnpm exec oxfmt --check {staged_files}
 
 pre-push:
   commands:

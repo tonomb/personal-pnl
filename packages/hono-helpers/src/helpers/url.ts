@@ -1,17 +1,17 @@
 /** Redacts keys from a url */
 export function redactUrl(_url: URL | string): URL {
-	let url: URL
-	if (typeof _url === 'string') {
-		url = new URL(_url)
-	} else {
-		url = new URL(_url.toString()) // clone
-	}
-	for (const [key, _] of Array.from(url.searchParams)) {
-		if (['key', 'apikey', 'api_key', 'token'].includes(key.toLowerCase())) {
-			url.searchParams.set(key, 'REDACTED')
-		}
-	}
-	return url
+  let url: URL;
+  if (typeof _url === "string") {
+    url = new URL(_url);
+  } else {
+    url = new URL(_url.toString()); // clone
+  }
+  for (const [key, _] of Array.from(url.searchParams)) {
+    if (["key", "apikey", "api_key", "token"].includes(key.toLowerCase())) {
+      url.searchParams.set(key, "REDACTED");
+    }
+  }
+  return url;
 }
 
 /**
@@ -21,9 +21,9 @@ export function redactUrl(_url: URL | string): URL {
  * @returns An array of strings, where each string is in the format "key=value".
  */
 export function searchParamsToArray(searchParams: URLSearchParams): string[] {
-	const result: string[] = []
-	for (const [key, value] of searchParams.entries()) {
-		result.push(`${key}=${value}`)
-	}
-	return result
+  const result: string[] = [];
+  for (const [key, value] of searchParams.entries()) {
+    result.push(`${key}=${value}`);
+  }
+  return result;
 }

@@ -1,8 +1,9 @@
-
 # Personal P&L
+
 **A Opinionated Open Source Operating System For Your Personal Finances**
 
 ## Backstory
+
 For the past 5 years I have managed my personal finances in the same way I would manage the personal finances of a company. I have a very complicated Excel Sheet to track a Profit & Loss statement to run my personal finances like a company.
 
 P&L are the gold standard for managing and tracking a companys finances why not take the same ideas and bring them over to personal finance.
@@ -14,6 +15,7 @@ We're now creating the product as a fully open-source project. The goal is to le
 This project is designed to run **locally only**. There is no authentication — it is a single-user personal tool and adding auth is out of scope. Do not expose it to the public internet.
 
 ## Contributing
+
 Email Me
 
 # Workers Monorepo Template
@@ -92,12 +94,12 @@ pnpm dlx shadcn@latest add <component>
 
 ### Key paths
 
-| Path | Purpose |
-|---|---|
-| `apps/web/src/components/ui/` | shadcn component source files |
-| `apps/web/src/lib/utils.ts` | `cn()` utility (clsx + tailwind-merge) |
-| `apps/web/src/index.css` | Tailwind CSS v4 entry + theme CSS variables |
-| `apps/web/components.json` | shadcn configuration |
+| Path                          | Purpose                                     |
+| ----------------------------- | ------------------------------------------- |
+| `apps/web/src/components/ui/` | shadcn component source files               |
+| `apps/web/src/lib/utils.ts`   | `cn()` utility (clsx + tailwind-merge)      |
+| `apps/web/src/index.css`      | Tailwind CSS v4 entry + theme CSS variables |
+| `apps/web/components.json`    | shadcn configuration                        |
 
 ### Style
 
@@ -106,8 +108,8 @@ The project uses the **base-nova** style with neutral base color and CSS variabl
 ### Usage in components
 
 ```tsx
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 ```
 
 The `@/` alias maps to `apps/web/src/`.
@@ -152,13 +154,13 @@ DB read (REAL)  →  new Decimal(value)  →  add() / subtract() / etc.  →  to
                                                                        →  toDisplay()   →  UI
 ```
 
-| Import from `@pnl/engine` | Purpose |
-|---|---|
-| `add`, `subtract`, `multiply`, `divide` | Safe decimal arithmetic |
-| `safeDivide` | Division that returns `null` when denominator is zero |
-| `toStorable` | Convert `Decimal` → `number` (2 dp) for DB writes |
-| `toDisplay` | Format as MXN currency string for UI |
-| `computePnl` | Full P&L calculation from transactions + categories |
+| Import from `@pnl/engine`               | Purpose                                               |
+| --------------------------------------- | ----------------------------------------------------- |
+| `add`, `subtract`, `multiply`, `divide` | Safe decimal arithmetic                               |
+| `safeDivide`                            | Division that returns `null` when denominator is zero |
+| `toStorable`                            | Convert `Decimal` → `number` (2 dp) for DB writes     |
+| `toDisplay`                             | Format as MXN currency string for UI                  |
+| `computePnl`                            | Full P&L calculation from transactions + categories   |
 
 ### Configuration Files
 
@@ -198,22 +200,24 @@ This project uses [Oxlint](https://oxc.rs/docs/guide/usage/linter) for linting a
 
 ### npm scripts
 
-| Command | Description |
-|---|---|
-| `pnpm lint` | Run Oxlint on the entire codebase |
-| `pnpm format` | Auto-fix formatting with oxfmt |
-| `pnpm format:check` | Check formatting without modifying files |
-| `pnpm lint:staged` | Run pre-commit checks on staged files (mirrors the hook) |
+| Command             | Description                                              |
+| ------------------- | -------------------------------------------------------- |
+| `pnpm lint`         | Run Oxlint on the entire codebase                        |
+| `pnpm format`       | Auto-fix formatting with oxfmt                           |
+| `pnpm format:check` | Check formatting without modifying files                 |
+| `pnpm lint:staged`  | Run pre-commit checks on staged files (mirrors the hook) |
 
 ### Git hooks
 
 **Pre-commit** — runs automatically on every `git commit`:
+
 - Oxlint with `--fix` on staged `.ts/.tsx/.js/.jsx` files (auto-fixes what it can; fails the commit on remaining violations)
 - oxfmt `--check` on staged files (fails if formatting is needed — run `pnpm format` to fix)
 
 Both checks run in parallel via Lefthook for speed (target: <2 s for typical commits).
 
 **Pre-push** — runs automatically before every `git push`:
+
 - Full test suite via `pnpm test`
 - Push is blocked if any tests fail
 
@@ -254,4 +258,5 @@ This repository includes GitHub Actions workflows defined in the `.github/workfl
   - Contains two jobs:
     - `test-and-deploy`: Installs dependencies, runs checks/tests (`bun turbo check:ci`), and then deploys all workers (`bun turbo deploy`). This step requires the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets to be configured in your repository's GitHub secrets.
     - `create-release-pr`: Uses [Changesets](https://github.com/changesets/changesets) to create a pull request that compiles changelogs and bumps package versions. This PR is primarily for documentation and versioning, as deployment happens directly on merge to `main`.
+
 # personal-pnl

@@ -582,3 +582,214 @@ describe("transactions.grouped", () => {
     expect(shop.categoryId).toBe(food!.id);
   });
 });
+
+// ---------------------------------------------------------------------------
+// pnl helpers shared across pnl test suites
+// ---------------------------------------------------------------------------
+
+function makePnlTx(overrides: {
+  id: string;
+  date: string;
+  amount: number;
+  type: "CREDIT" | "DEBIT";
+  categoryId?: number | null;
+}) {
+  return {
+    description: "tx",
+    sourceFile: "bank.csv",
+    rawRow: "{}",
+    createdAt: new Date().toISOString(),
+    categoryId: null as number | null,
+    ...overrides
+  };
+}
+
+// ---------------------------------------------------------------------------
+// pnl.getReport
+// ---------------------------------------------------------------------------
+
+describe("pnl.getReport", () => {
+  it("returns empty months and zero YTD when no transactions exist", async () => {
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    expect(result.months).toEqual([]);
+    expect(result.ytdIncome).toBe(0);
+    expect(result.ytdExpenses).toBe(0);
+    expect(result.ytdNet).toBe(0);
+    expect(result.avgMonthlySavingsRate).toBeNull();
+    expect(result.uncategorizedCount).toBe(0);
+  });
+
+  it("counts CREDIT in INCOME category as income with named items", async () => {
+    const db = makeDb();
+    const [cat] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    await db
+      .insert(transactions)
+      .values(makePnlTx({ id: "r-1", date: "2024-01-15", amount: 1000, type: "CREDIT", categoryId: cat!.id }));
+
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    expect(result.months).toHaveLength(1);
+    expect(result.months[0]!.month).toBe("2024-01");
+    expect(result.months[0]!.income.total).toBe(1000);
+    expect(result.months[0]!.income.items).toHaveLength(1);
+    expect(result.months[0]!.income.items[0]!.categoryName).toBe("Salary");
+    expect(result.months[0]!.income.items[0]!.total).toBe(1000);
+    expect(result.ytdIncome).toBe(1000);
+  });
+
+  it("counts DEBIT in FIXED category as fixed expenses", async () => {
+    const db = makeDb();
+    const [cat] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    await db
+      .insert(transactions)
+      .values(makePnlTx({ id: "r-2", date: "2024-01-05", amount: 500, type: "DEBIT", categoryId: cat!.id }));
+
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    expect(result.months[0]!.fixed.total).toBe(500);
+    expect(result.months[0]!.fixed.items[0]!.categoryName).toBe("Rent");
+    expect(result.ytdExpenses).toBe(500);
+  });
+
+  it("counts DEBIT in VARIABLE category as variable expenses", async () => {
+    const db = makeDb();
+    const [cat] = await db.insert(categories).values({ name: "Groceries", groupType: "VARIABLE" }).returning();
+    await db
+      .insert(transactions)
+      .values(makePnlTx({ id: "r-3", date: "2024-01-10", amount: 200, type: "DEBIT", categoryId: cat!.id }));
+
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    expect(result.months[0]!.variable.total).toBe(200);
+    expect(result.months[0]!.variable.items[0]!.categoryName).toBe("Groceries");
+    expect(result.ytdExpenses).toBe(200);
+  });
+
+  it("excludes IGNORED transactions from net/income/fixed/variable but tracks in ignored group", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [ign] = await db.insert(categories).values({ name: "Transfer", groupType: "IGNORED" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "r-4a", date: "2024-01-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "r-4b", date: "2024-01-01", amount: 500, type: "DEBIT", categoryId: ign!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    const jan = result.months[0]!;
+    expect(jan.income.total).toBe(1000);
+    expect(jan.fixed.total).toBe(0);
+    expect(jan.variable.total).toBe(0);
+    expect(jan.net).toBe(1000);
+    expect(jan.ignored.total).toBe(500);
+    expect(jan.ignored.items[0]!.categoryName).toBe("Transfer");
+    expect(result.ytdExpenses).toBe(0);
+  });
+
+  it("excludes uncategorized transactions from totals but counts them as uncategorizedCount", async () => {
+    const db = makeDb();
+    const [cat] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "r-5a", date: "2024-01-01", amount: 1000, type: "CREDIT", categoryId: cat!.id }),
+        makePnlTx({ id: "r-5b", date: "2024-01-05", amount: 50, type: "DEBIT", categoryId: null }),
+        makePnlTx({ id: "r-5c", date: "2024-01-15", amount: 30, type: "DEBIT", categoryId: null })
+      ]);
+
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    expect(result.months[0]!.income.total).toBe(1000);
+    expect(result.months[0]!.variable.total).toBe(0);
+    expect(result.uncategorizedCount).toBe(2);
+  });
+
+  it("computes net = income - fixed - variable and savingsRate = net / income", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    const [vrb] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "r-6a", date: "2024-01-01", amount: 3000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "r-6b", date: "2024-01-01", amount: 1000, type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "r-6c", date: "2024-01-01", amount: 500, type: "DEBIT", categoryId: vrb!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    const jan = result.months[0]!;
+    expect(jan.income.total).toBe(3000);
+    expect(jan.fixed.total).toBe(1000);
+    expect(jan.variable.total).toBe(500);
+    expect(jan.net).toBe(1500);
+    // savingsRate = 1500 / 3000 = 0.5
+    expect(jan.savingsRate).toBeCloseTo(0.5, 5);
+  });
+
+  it("sets savingsRate to null when income is zero", async () => {
+    const db = makeDb();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    await db
+      .insert(transactions)
+      .values(makePnlTx({ id: "r-7", date: "2024-01-01", amount: 500, type: "DEBIT", categoryId: fix!.id }));
+
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    expect(result.months[0]!.savingsRate).toBeNull();
+  });
+
+  it("aggregates YTD across multiple months and computes avgMonthlySavingsRate", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "r-8a", date: "2024-01-01", amount: 2000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "r-8b", date: "2024-01-01", amount: 800, type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "r-8c", date: "2024-02-01", amount: 2000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "r-8d", date: "2024-02-01", amount: 800, type: "DEBIT", categoryId: fix!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    expect(result.months).toHaveLength(2);
+    expect(result.ytdIncome).toBe(4000);
+    expect(result.ytdExpenses).toBe(1600);
+    expect(result.ytdNet).toBe(2400);
+    // each month: net=1200, income=2000 → savingsRate=0.6
+    expect(result.avgMonthlySavingsRate).toBeCloseTo(0.6, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pnl.getMonth
+// ---------------------------------------------------------------------------
+
+describe("pnl.getMonth", () => {
+  it("returns MonthlyPnL for the requested month and excludes other months", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "m-1a", date: "2024-03-10", amount: 3000, type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "m-1b", date: "2024-03-10", amount: 1000, type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "m-1c", date: "2024-04-01", amount: 999, type: "CREDIT", categoryId: inc!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getMonth({ month: "2024-03" });
+    expect(result.month).toBe("2024-03");
+    expect(result.income.total).toBe(3000);
+    expect(result.fixed.total).toBe(1000);
+    expect(result.net).toBe(2000);
+    expect(result.savingsRate).toBe(0.67); // Math.round(2000/3000 * 100) / 100
+  });
+
+  it("returns zero totals and null savingsRate for a month with no transactions", async () => {
+    const result = await makeCaller().pnl.getMonth({ month: "2024-05" });
+    expect(result.month).toBe("2024-05");
+    expect(result.income.total).toBe(0);
+    expect(result.fixed.total).toBe(0);
+    expect(result.variable.total).toBe(0);
+    expect(result.net).toBe(0);
+    expect(result.savingsRate).toBeNull();
+  });
+});

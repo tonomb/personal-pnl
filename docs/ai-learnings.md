@@ -9,3 +9,7 @@ Captured after each session following the compound engineering loop.
 - [2026-04-13] SheetJS `XLSX.write({type:'array'})` returns a plain `number[]` in jsdom (not `Uint8Array`) — test fixtures need `new Uint8Array(raw)` + `.buffer.slice(byteOffset, byteOffset+byteLength)` to produce a clean ArrayBuffer
 - [2026-04-13] TDD horizontal slicing (write all tests → write all impl) produces tests that verify imagined shape, not real behavior; vertical slices (one test → one impl → repeat) keep tests honest
 - [2026-04-14] Cloudflare D1 hard limit: **100 bound parameters per statement** — chunk inserts by `floor(100 / params_per_row)` rows, not by row count; also chunk `inArray` dedup queries by 90 IDs
+- [2026-04-22] tRPC v11 + Cloudflare Workers Vitest: `createCaller` validation failures emit a second unhandled rejection; test Zod schemas directly via `.safeParse()` instead of routing through tRPC
+- [2026-04-22] Drizzle D1 `db.batch()` requires a variadic tuple type — dynamic arrays won't typecheck; cast as `(ctx.db.batch as any)(queries)` with an explicit return type annotation
+- [2026-04-23] shadcn `base-nova` style uses `@base-ui/react` (not Radix) — always use `pnpm dlx shadcn@latest add <name>` from `apps/web`; hand-writing components misses @base-ui wiring and causes type errors
+- [2026-04-23] `@base-ui/react` Progress children must be a render function `(formattedValue, value) => ReactNode` — render labels outside `<Progress>` to avoid "multiple children" TS2746 error

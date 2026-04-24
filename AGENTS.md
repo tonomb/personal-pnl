@@ -100,6 +100,23 @@ just dev       # start web + worker concurrently (uses remote D1 binding)
 pnpm db:push   # apply Drizzle schema changes to D1
 ```
 
+## UI Components (shadcn)
+
+The project uses shadcn with the `base-nova` style (configured in `apps/web/components.json`). Components are backed by `@base-ui/react` primitives — **not** Radix UI.
+
+**Always use the shadcn CLI to add new components:**
+
+```bash
+cd apps/web && pnpm dlx shadcn@latest add <component-name>
+```
+
+Do NOT hand-write components from scratch. The CLI handles `@base-ui/react` wiring and Tailwind theming automatically. Existing components live in `apps/web/src/components/ui/`.
+
+**Known @base-ui/react quirks:**
+- `Progress.Root` children must be a render function `(formattedValue, value) => ReactNode` — render labels/values outside `<Progress>` instead
+- `Select.Root` uses `onValueChange={(val) => ...}` where `val` is typed as the item's value type (string by default)
+- `Checkbox.Root` supports `indeterminate` prop; use `onCheckedChange` (not `onChange`)
+
 ## Key Constraints
 
 - TypeScript configs must use fully qualified paths: `@repo/typescript-config/base.json`

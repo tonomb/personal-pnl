@@ -1,2 +1,2 @@
 export * from './schema'
-export type { AppRouter } from './trpc'
+export type { AppRouter, TransactionWithCategory } from './trpc'

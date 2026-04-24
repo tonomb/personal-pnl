@@ -19,6 +19,7 @@
 		"@pnl/types": "workspace:*",
 		"@tanstack/react-query": "5.96.2",
 		"@tanstack/react-router": "1.168.10",
+		"@tanstack/react-virtual": "^3.13.24",
 		"@trpc/client": "11.1.0",
 		"@trpc/react-query": "11.1.0",
 		"class-variance-authority": "^0.7.1",

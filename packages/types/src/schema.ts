@@ -1,5 +1,6 @@
 import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod'
+import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
 // Tables
@@ -45,6 +46,11 @@ export const selectCategorySchema = createSelectSchema(categories)
 
 export const insertTransactionSchema = createInsertSchema(transactions)
 export const selectTransactionSchema = createSelectSchema(transactions)
+
+export const transactionInputSchema = insertTransactionSchema.extend({
+	date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+	amount: z.number().positive('Amount must be positive'),
+})
 
 export const insertColumnMappingSchema = createInsertSchema(columnMappings)
 export const selectColumnMappingSchema = createSelectSchema(columnMappings)

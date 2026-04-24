@@ -3,7 +3,7 @@ import { and, count, desc, eq, inArray, isNull, like, sql, type SQL } from "driz
 import { WorkersLogger } from "workers-tagged-logger";
 import { z } from "zod";
 
-import type { CategoryTotal, MonthlyPnL } from "@pnl/types";
+import type { CategoryTotal, KpiSummary, MonthlyPnL } from "@pnl/types";
 import {
   categories,
   categorizeInputSchema,
@@ -11,6 +11,7 @@ import {
   createCategoryInputSchema,
   deleteCategoryInputSchema,
   insertColumnMappingSchema,
+  pnlGetKpisInputSchema,
   pnlGetMonthInputSchema,
   pnlGetReportInputSchema,
   transactionGroupedInputSchema,
@@ -416,6 +417,63 @@ export const appRouter = router({
         nonNullRates.length === 0 ? null : round2(nonNullRates.reduce((s, r) => s + r, 0) / nonNullRates.length);
 
       return { months: monthlyData, ytdIncome, ytdExpenses, ytdNet, avgMonthlySavingsRate, uncategorizedCount };
+    }),
+
+    getKpis: publicProcedure.input(pnlGetKpisInputSchema).query(async ({ input, ctx }): Promise<KpiSummary> => {
+      const [y, m] = input.month.split("-").map(Number);
+      const prevDate = new Date(y!, m! - 1, 1);
+      prevDate.setMonth(prevDate.getMonth() - 1);
+      const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+
+      const rows = await ctx.db
+        .select({
+          month: sql<string>`strftime('%Y-%m', ${transactions.date})`,
+          categoryId: transactions.categoryId,
+          categoryName: categories.name,
+          groupType: categories.groupType,
+          creditTotal: sql<number>`SUM(CASE WHEN ${transactions.type} = 'CREDIT' THEN ${transactions.amount} ELSE 0 END)`,
+          debitTotal: sql<number>`SUM(CASE WHEN ${transactions.type} = 'DEBIT' THEN ${transactions.amount} ELSE 0 END)`
+        })
+        .from(transactions)
+        .leftJoin(categories, eq(transactions.categoryId, categories.id))
+        .where(sql`strftime('%Y-%m', ${transactions.date}) IN (${input.month}, ${prevMonth})`)
+        .groupBy(sql`strftime('%Y-%m', ${transactions.date})`, transactions.categoryId);
+
+      const curr = buildMonthlyPnL(input.month, rows);
+
+      const netLabel: KpiSummary["netLabel"] = curr.net > 0 ? "IN_THE_GREEN" : curr.net < 0 ? "IN_THE_RED" : "NEUTRAL";
+
+      const savingsLabel: KpiSummary["savingsLabel"] =
+        curr.savingsRate === null
+          ? null
+          : curr.savingsRate >= 0.2
+            ? "HEALTHY"
+            : curr.savingsRate >= 0.1
+              ? "WATCH"
+              : "DANGER";
+
+      const expenseItems = [...curr.fixed.items, ...curr.variable.items];
+      const biggestExpense =
+        expenseItems.length === 0 ? null : expenseItems.reduce((max, item) => (item.total > max.total ? item : max));
+
+      const hasPrevData = rows.some((r) => r.month === prevMonth && r.categoryId !== null);
+      const vsLastMonth: KpiSummary["vsLastMonth"] = (() => {
+        if (!hasPrevData) return null;
+        const prev = buildMonthlyPnL(prevMonth, rows);
+        const delta = round2(curr.net - prev.net);
+        const label: "BETTER" | "WORSE" | "SAME" = delta > 0 ? "BETTER" : delta < 0 ? "WORSE" : "SAME";
+        return { delta, label };
+      })();
+
+      return {
+        month: input.month,
+        net: curr.net,
+        netLabel,
+        savingsRate: curr.savingsRate,
+        savingsLabel,
+        biggestExpense: biggestExpense ? { name: biggestExpense.categoryName, total: biggestExpense.total } : null,
+        vsLastMonth
+      };
     }),
 
     getMonth: publicProcedure.input(pnlGetMonthInputSchema).query(async ({ input, ctx }) => {

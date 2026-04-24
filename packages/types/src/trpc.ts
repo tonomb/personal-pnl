@@ -64,6 +64,16 @@ export type PnLReport = {
   uncategorizedCount: number;
 };
 
+export type KpiSummary = {
+  month: string;
+  net: number;
+  netLabel: "IN_THE_GREEN" | "IN_THE_RED" | "NEUTRAL";
+  savingsRate: number | null;
+  savingsLabel: "HEALTHY" | "WATCH" | "DANGER" | null;
+  biggestExpense: { name: string; total: number } | null;
+  vsLastMonth: { delta: number; label: "BETTER" | "WORSE" | "SAME" } | null;
+};
+
 const t = initTRPC.create();
 
 const router = t.router;
@@ -134,7 +144,10 @@ export const appRouter = router({
       .query((): PnLReport => null as unknown as PnLReport),
     getMonth: publicProcedure
       .input((v: unknown) => v as { month: string })
-      .query((): MonthlyPnL => null as unknown as MonthlyPnL)
+      .query((): MonthlyPnL => null as unknown as MonthlyPnL),
+    getKpis: publicProcedure
+      .input((v: unknown) => v as { month: string })
+      .query((): KpiSummary => null as unknown as KpiSummary)
   })
 });
 

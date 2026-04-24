@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronRightIcon, DownloadIcon, Loader2Icon } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
+import { KpiCards } from "@/components/pnl/KpiCards";
 import { UncategorizedBanner } from "@/components/pnl/UncategorizedBanner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -296,6 +297,9 @@ function PnlPage() {
           </Button>
         </div>
       </div>
+
+      {/* KPI Summary Cards */}
+      <KpiCards months={report?.months ?? []} focusedMonth={focusedMonth} isReportLoading={isLoading} />
 
       {/* Uncategorized warning */}
       {report && <UncategorizedBanner count={report.uncategorizedCount} />}

@@ -1,0 +1,25 @@
+import { cn } from "@/lib/utils";
+
+function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("rounded-xl border bg-card text-card-foreground shadow", className)} {...props} />;
+}
+
+function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("flex flex-col space-y-1.5 p-4 pb-2", className)} {...props} />;
+}
+
+function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={cn("text-xs font-medium uppercase tracking-wide text-muted-foreground", className)} {...props} />
+  );
+}
+
+function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("px-4 pb-2", className)} {...props} />;
+}
+
+function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("flex items-center px-4 pb-4", className)} {...props} />;
+}
+
+export { Card, CardContent, CardFooter, CardHeader, CardTitle };

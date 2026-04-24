@@ -327,7 +327,8 @@ function CategorizePage() {
 
 	const parentRef = useRef<HTMLDivElement>(null)
 
-	const { data: txData = [] } = trpc.transactions.list.useQuery({})
+	const { data: txResult } = trpc.transactions.list.useQuery({})
+	const txData = txResult?.rows ?? []
 	const { data: catData } = trpc.categories.list.useQuery()
 	const utils = trpc.useUtils()
 
@@ -347,17 +348,22 @@ function CategorizePage() {
 			const snapshot = utils.transactions.list.getData({})
 			const match = categoryId != null ? allCategories.find((c) => c.id === categoryId) : null
 			utils.transactions.list.setData({}, (old) =>
-				old?.map((tx) =>
-					ids.includes(tx.id)
-						? {
-								...tx,
-								categoryId,
-								categoryName: match?.name ?? null,
-								categoryGroupType: match?.groupType ?? null,
-								categoryColor: match?.color ?? null,
-							}
-						: tx,
-				),
+				old
+					? {
+							...old,
+							rows: old.rows.map((tx) =>
+								ids.includes(tx.id)
+									? {
+											...tx,
+											categoryId,
+											categoryName: match?.name ?? null,
+											categoryGroupType: match?.groupType ?? null,
+											categoryColor: match?.color ?? null,
+										}
+									: tx,
+							),
+						}
+					: old,
 			)
 			return { snapshot }
 		},

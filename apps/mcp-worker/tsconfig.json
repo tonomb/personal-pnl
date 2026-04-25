@@ -1,0 +1,6 @@
+{
+  "extends": "@repo/typescript-config/workers.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types"]
+  }
+}

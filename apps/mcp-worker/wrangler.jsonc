@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pnl-mcp-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "dev": {
+    "port": 8788
+  },
+  "routes": [],
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1 // 100%
+    }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "personal-pnl",
+      "database_id": "64155aee-5a3e-4e8d-8f08-2fcfce25bf9f",
+      "migrations_dir": "../../packages/types/drizzle"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "MCP_OBJECT", "class_name": "PnLMcp" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PnLMcp"] }],
+  "vars": {
+    "ENVIRONMENT": "development", // overridden during deployment
+    "SENTRY_RELEASE": "unknown" // overridden during deployment
+  }
+}

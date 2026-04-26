@@ -11,6 +11,18 @@ export type {
   TopMerchantsInput,
   TransactionRow
 } from "./transactions-query";
+export { getBudgetVariance, getCashflowTrend, getCategoryList, getFinancialHealthSnapshot } from "./advisor-tools";
+export type {
+  BudgetVarianceLabel,
+  BudgetVarianceResult,
+  BudgetVarianceRow,
+  CashflowTrendPoint,
+  CashflowTrendResult,
+  CategoryListResult,
+  CategoryListRow,
+  DataQuality,
+  FinancialHealthSnapshot
+} from "./advisor-tools";
 export type {
   AppRouter,
   CategoryTotal,

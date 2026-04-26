@@ -96,6 +96,15 @@ export const mcpSearchTransactionsInputSchema = z.object({
   limit: z.number().int().min(1).max(200).default(50)
 });
 
+// LAG-16 advisor tool input schemas.
+export const mcpBudgetVarianceInputSchema = z.object({
+  month: monthFilterSchema
+});
+
+export const mcpCashflowTrendInputSchema = z.object({
+  months: z.number().int().min(1).max(24).default(6)
+});
+
 export const categorizeInputSchema = z.object({
   ids: z.array(z.string()).min(1).max(500),
   categoryId: z.number().int().nullable()

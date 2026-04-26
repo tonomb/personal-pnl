@@ -8,10 +8,16 @@ import * as schema from "@pnl/types";
 import {
   computeMonthlyPnl,
   computePnlReport,
+  getBudgetVariance,
+  getCashflowTrend,
+  getCategoryList,
+  getFinancialHealthSnapshot,
   getSavingsRateBenchmark,
   getSpendingByCategory,
   getTopMerchants,
   listTransactions,
+  mcpBudgetVarianceInputSchema,
+  mcpCashflowTrendInputSchema,
   mcpGetTransactionsInputSchema,
   mcpSearchTransactionsInputSchema,
   mcpSpendingByCategoryInputSchema,
@@ -219,6 +225,81 @@ export class PnLMcp extends McpAgent<Env> {
         const db = drizzle(this.env.DB, { schema });
         const result = await searchTransactions(db, input);
         return jsonText({ rows: result });
+      }
+    );
+
+    this.server.registerTool(
+      "get_financial_health_snapshot",
+      {
+        description:
+          "Return a synthesized snapshot of the user's current financial health for the current calendar month: " +
+          "net (income − expenses) with IN_THE_GREEN/IN_THE_RED/NEUTRAL label, savings rate with " +
+          "HEALTHY/WATCH/DANGER benchmark, the single biggest expense category, and the delta in net vs the " +
+          "previous month with BETTER/WORSE/SAME label. Use this as the FIRST call when the user asks an " +
+          "open-ended 'how am I doing?' question — it lets you give an immediate top-line answer without " +
+          "stitching together multiple queries. Includes a `data_quality` block; warn the user when " +
+          "`warning: true` because totals may be incomplete."
+      },
+      async () => {
+        const db = drizzle(this.env.DB, { schema });
+        const snapshot = await getFinancialHealthSnapshot(db);
+        return jsonText(snapshot);
+      }
+    );
+
+    this.server.registerTool(
+      "get_budget_variance",
+      {
+        description:
+          "Return per-category budget variance for the requested month: each FIXED and VARIABLE category " +
+          "with its trailing 3-month average (the user's implicit budget), the actual spend in `month`, the " +
+          "difference, and a status label — OVER if actual exceeds the average by more than 10%, UNDER if it " +
+          "falls below by more than 10%, otherwise ON_TRACK. Rows are sorted by absolute variance descending " +
+          "so the biggest deviations come first. Use this to identify which categories are driving over- or " +
+          "under-spending and to recommend specific corrective action by category. Month must be YYYY-MM. " +
+          "Includes a `data_quality` block covering the trailing 3 months plus the requested month.",
+        inputSchema: mcpBudgetVarianceInputSchema.shape
+      },
+      async ({ month }) => {
+        const db = drizzle(this.env.DB, { schema });
+        const result = await getBudgetVariance(db, month);
+        return jsonText(result);
+      }
+    );
+
+    this.server.registerTool(
+      "get_cashflow_trend",
+      {
+        description:
+          "Return monthly cashflow for the trailing N calendar months as an array of " +
+          "`{ month, income, expenses, net }`, oldest first. `months` defaults to 6 and is capped at 24. " +
+          "IGNORED transfers are excluded so net reflects real cashflow. Use this to spot multi-month trends " +
+          "(e.g. expenses creeping up, income volatility, persistent negative net) and to ground recommendations " +
+          "in the user's recent trajectory rather than a single month. Includes a `data_quality` block covering " +
+          "the requested window.",
+        inputSchema: mcpCashflowTrendInputSchema.shape
+      },
+      async ({ months }) => {
+        const db = drizzle(this.env.DB, { schema });
+        const result = await getCashflowTrend(db, months);
+        return jsonText(result);
+      }
+    );
+
+    this.server.registerTool(
+      "get_category_list",
+      {
+        description:
+          "Return every category configured in the system as `{ id, name, group_type, color }`, ordered as " +
+          "they appear in the UI. `group_type` is one of INCOME, FIXED, VARIABLE, IGNORED. Use this so you " +
+          "can refer to categories by their exact name when giving advice (e.g. 'cut Dining Out by 20%') and " +
+          "to confirm which categories exist before suggesting changes. Includes a `data_quality` block " +
+          "computed across all transactions so you can warn the user when categorization coverage is poor."
+      },
+      async () => {
+        const db = drizzle(this.env.DB, { schema });
+        const result = await getCategoryList(db);
+        return jsonText(result);
       }
     );
   }

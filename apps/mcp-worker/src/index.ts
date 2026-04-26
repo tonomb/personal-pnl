@@ -5,7 +5,20 @@ import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
 
 import * as schema from "@pnl/types";
-import { computeMonthlyPnl, computePnlReport, getSavingsRateBenchmark, monthFilterSchema } from "@pnl/types";
+import {
+  computeMonthlyPnl,
+  computePnlReport,
+  getSavingsRateBenchmark,
+  getSpendingByCategory,
+  getTopMerchants,
+  listTransactions,
+  mcpGetTransactionsInputSchema,
+  mcpSearchTransactionsInputSchema,
+  mcpSpendingByCategoryInputSchema,
+  mcpTopMerchantsInputSchema,
+  monthFilterSchema,
+  searchTransactions
+} from "@pnl/types";
 
 const validator = new CfWorkerJsonSchemaValidator();
 
@@ -140,6 +153,72 @@ export class PnLMcp extends McpAgent<Env> {
           savingsBenchmark: getSavingsRateBenchmark(report.avgMonthlySavingsRate),
           warning: uncategorizedWarning(report.uncategorizedCount, String(year))
         });
+      }
+    );
+
+    this.server.registerTool(
+      "get_transactions",
+      {
+        description:
+          "Return individual transactions with optional filters: `month` (YYYY-MM), `categoryId` (number), or " +
+          "`uncategorized: true` to find transactions still missing a category. Each row includes id, date, " +
+          "description, amount (positive number), type (DEBIT or CREDIT), categoryId, and categoryName. " +
+          "Results are ordered newest-first. Default limit is 50, max 200 — make targeted queries.",
+        inputSchema: mcpGetTransactionsInputSchema.shape
+      },
+      async (input) => {
+        const db = drizzle(this.env.DB, { schema });
+        const result = await listTransactions(db, input);
+        return jsonText(result);
+      }
+    );
+
+    this.server.registerTool(
+      "get_spending_by_category",
+      {
+        description:
+          "Return total spend per FIXED and VARIABLE category for a single month, sorted by amount descending. " +
+          "Income and ignored transfers are excluded; CREDIT entries (e.g. refunds) are not counted. Use this when " +
+          "the user asks 'where did my money go in <month>?'. Month must be YYYY-MM.",
+        inputSchema: mcpSpendingByCategoryInputSchema.shape
+      },
+      async ({ month }) => {
+        const db = drizzle(this.env.DB, { schema });
+        const result = await getSpendingByCategory(db, month);
+        return jsonText(result);
+      }
+    );
+
+    this.server.registerTool(
+      "get_top_merchants",
+      {
+        description:
+          "Return the top merchants by total amount, grouped by normalized description (uppercased + trimmed). " +
+          "Each row has merchant (the normalized name), count (number of transactions), and total. Optional " +
+          "`month` filter (YYYY-MM). Default limit is 10, max 200. Use this for 'where do I spend the most?' " +
+          "questions.",
+        inputSchema: mcpTopMerchantsInputSchema.shape
+      },
+      async (input) => {
+        const db = drizzle(this.env.DB, { schema });
+        const result = await getTopMerchants(db, input);
+        return jsonText(result);
+      }
+    );
+
+    this.server.registerTool(
+      "search_transactions",
+      {
+        description:
+          "Find transactions whose description contains `query` (case-insensitive substring match). Optional " +
+          "`month` filter (YYYY-MM). Returns the same row shape as get_transactions, ordered newest-first. " +
+          "Default limit is 50, max 200. Use this when the user names a specific merchant or keyword.",
+        inputSchema: mcpSearchTransactionsInputSchema.shape
+      },
+      async (input) => {
+        const db = drizzle(this.env.DB, { schema });
+        const result = await searchTransactions(db, input);
+        return jsonText({ rows: result });
       }
     );
   }

@@ -76,6 +76,26 @@ export const transactionListInputSchema = transactionFilterSchema.extend({
 
 export const transactionGroupedInputSchema = transactionFilterSchema.optional();
 
+// MCP tool input schemas (LAG-15) — capped at 200 rows per tool invocation.
+export const mcpGetTransactionsInputSchema = transactionFilterSchema.extend({
+  limit: z.number().int().min(1).max(200).default(50)
+});
+
+export const mcpSpendingByCategoryInputSchema = z.object({
+  month: monthFilterSchema
+});
+
+export const mcpTopMerchantsInputSchema = z.object({
+  month: monthFilterSchema.optional(),
+  limit: z.number().int().min(1).max(200).default(10)
+});
+
+export const mcpSearchTransactionsInputSchema = z.object({
+  query: z.string().min(1),
+  month: monthFilterSchema.optional(),
+  limit: z.number().int().min(1).max(200).default(50)
+});
+
 export const categorizeInputSchema = z.object({
   ids: z.array(z.string()).min(1).max(500),
   categoryId: z.number().int().nullable()

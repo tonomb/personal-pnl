@@ -3,8 +3,9 @@ import { and, count, desc, eq, inArray, isNull, like, sql, type SQL } from "driz
 import { WorkersLogger } from "workers-tagged-logger";
 import { z } from "zod";
 
-import type { KpiSummary } from "@pnl/types";
+import type { KpiSummary, Tag } from "@pnl/types";
 import {
+  assignTagInputSchema,
   buildMonthlyPnL,
   categories,
   categorizeInputSchema,
@@ -12,16 +13,21 @@ import {
   computeMonthlyPnl,
   computePnlReport,
   createCategoryInputSchema,
+  createTagInputSchema,
   deleteCategoryInputSchema,
+  deleteTagInputSchema,
   getSavingsRateBenchmark,
   insertColumnMappingSchema,
   pnlGetKpisInputSchema,
   pnlGetMonthInputSchema,
   pnlGetReportInputSchema,
+  removeTagInputSchema,
+  tags,
   transactionGroupedInputSchema,
   transactionInputSchema,
   transactionListInputSchema,
   transactions,
+  transactionTags,
   updateCategoryInputSchema
 } from "@pnl/types";
 
@@ -88,6 +94,83 @@ export const appRouter = router({
     })
   }),
 
+  tags: router({
+    list: publicProcedure.query(async ({ ctx }) => {
+      const rows = await ctx.db
+        .select({
+          id: tags.id,
+          name: tags.name,
+          color: tags.color,
+          createdAt: tags.createdAt,
+          transactionCount: count(transactionTags.transactionId)
+        })
+        .from(tags)
+        .leftJoin(transactionTags, eq(transactionTags.tagId, tags.id))
+        .groupBy(tags.id)
+        .orderBy(tags.name);
+      return rows;
+    }),
+
+    create: publicProcedure.input(createTagInputSchema).mutation(async ({ input, ctx }) => {
+      const id = crypto.randomUUID();
+      try {
+        const [created] = await ctx.db.insert(tags).values({ id, name: input.name, color: input.color }).returning();
+        return created!;
+      } catch (err) {
+        const causeMessage = err instanceof Error && err.cause instanceof Error ? err.cause.message : "";
+        if (/UNIQUE constraint failed.*tags\.name/i.test(causeMessage)) {
+          throw new TRPCError({ code: "CONFLICT", message: `Tag name "${input.name}" already exists` });
+        }
+        throw err;
+      }
+    }),
+
+    delete: publicProcedure.input(deleteTagInputSchema).mutation(async ({ input, ctx }) => {
+      const [deleted] = await ctx.db.delete(tags).where(eq(tags.id, input.id)).returning({ id: tags.id });
+      if (!deleted) {
+        throw new TRPCError({ code: "NOT_FOUND", message: `Tag ${input.id} not found` });
+      }
+      return { deletedId: deleted.id };
+    }),
+
+    assignToTransactions: publicProcedure.input(assignTagInputSchema).mutation(async ({ input, ctx }) => {
+      const tagExists = await ctx.db.select({ id: tags.id }).from(tags).where(eq(tags.id, input.tagId)).limit(1);
+      if (tagExists.length === 0) {
+        throw new TRPCError({ code: "NOT_FOUND", message: `Tag ${input.tagId} not found` });
+      }
+
+      // D1 allows max 100 bound params per statement. transaction_tags inserts
+      // 2 params per row → use 45 rows/statement for headroom.
+      const idChunks = chunks(input.transactionIds, 45);
+      const rowChunks = idChunks.map((chunk) => chunk.map((transactionId) => ({ transactionId, tagId: input.tagId })));
+      for (const batchGroup of chunks(rowChunks, 100)) {
+        await (ctx.db.batch as unknown as (s: unknown[]) => Promise<unknown>)(
+          batchGroup.map((rowsForChunk) =>
+            ctx.db
+              .insert(transactionTags)
+              .values(rowsForChunk)
+              .onConflictDoNothing({ target: [transactionTags.transactionId, transactionTags.tagId] })
+          )
+        );
+      }
+      return { assigned: input.transactionIds.length };
+    }),
+
+    removeFromTransactions: publicProcedure.input(removeTagInputSchema).mutation(async ({ input, ctx }) => {
+      // DELETE statement uses 1 (tagId) + N (transactionIds) params; chunk to 90 ids
+      // for a hard 91-param ceiling per statement.
+      const idChunks = chunks(input.transactionIds, 90);
+      await (ctx.db.batch as unknown as (s: unknown[]) => Promise<unknown>)(
+        idChunks.map((chunk) =>
+          ctx.db
+            .delete(transactionTags)
+            .where(and(eq(transactionTags.tagId, input.tagId), inArray(transactionTags.transactionId, chunk)))
+        )
+      );
+      return { removed: input.transactionIds.length };
+    })
+  }),
+
   transactions: router({
     list: publicProcedure.input(transactionListInputSchema).query(async ({ input, ctx }) => {
       const filters: SQL[] = [];
@@ -119,7 +202,35 @@ export const appRouter = router({
 
       const [{ total }] = await ctx.db.select({ total: count() }).from(transactions).where(whereClause);
 
-      return { rows, total: total ?? 0 };
+      const txIds = rows.map((r) => r.id);
+      const tagsByTx = new Map<string, Tag[]>();
+      if (txIds.length > 0) {
+        const idChunks = chunks(txIds, 90);
+        type TagJoinRow = { transactionId: string; id: string; name: string; color: string; createdAt: string };
+        const tagRowsBatched = (await (ctx.db.batch as unknown as (s: unknown[]) => Promise<unknown>)(
+          idChunks.map((chunk) =>
+            ctx.db
+              .select({
+                transactionId: transactionTags.transactionId,
+                id: tags.id,
+                name: tags.name,
+                color: tags.color,
+                createdAt: tags.createdAt
+              })
+              .from(transactionTags)
+              .innerJoin(tags, eq(tags.id, transactionTags.tagId))
+              .where(inArray(transactionTags.transactionId, chunk))
+          )
+        )) as TagJoinRow[][];
+        for (const tagRow of tagRowsBatched.flat()) {
+          const { transactionId, ...tag } = tagRow;
+          const list = tagsByTx.get(transactionId) ?? [];
+          list.push(tag);
+          tagsByTx.set(transactionId, list);
+        }
+      }
+      const enrichedRows = rows.map((r) => ({ ...r, tags: tagsByTx.get(r.id) ?? [] }));
+      return { rows: enrichedRows, total: total ?? 0 };
     }),
 
     grouped: publicProcedure.input(transactionGroupedInputSchema).query(async ({ input, ctx }) => {

@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -29,6 +29,28 @@ export const transactions = sqliteTable("transactions", {
     .notNull()
 });
 
+export const tags = sqliteTable("tags", {
+  id: text("id").primaryKey(), // nanoid
+  name: text("name").notNull().unique(), // e.g. "New York 2026"
+  color: text("color").notNull(), // hex string, e.g. "#3B82F6"
+  createdAt: text("created_at")
+    .$defaultFn(() => new Date().toISOString())
+    .notNull()
+});
+
+export const transactionTags = sqliteTable(
+  "transaction_tags",
+  {
+    transactionId: text("transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    tagId: text("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" })
+  },
+  (table) => [primaryKey({ columns: [table.transactionId, table.tagId] })]
+);
+
 export const columnMappings = sqliteTable("column_mappings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   fileFingerprint: text("file_fingerprint").notNull().unique(),
@@ -56,6 +78,12 @@ export const transactionInputSchema = insertTransactionSchema.extend({
 
 export const insertColumnMappingSchema = createInsertSchema(columnMappings);
 export const selectColumnMappingSchema = createSelectSchema(columnMappings);
+
+export const insertTagSchema = createInsertSchema(tags);
+export const selectTagSchema = createSelectSchema(tags);
+
+export const insertTransactionTagSchema = createInsertSchema(transactionTags);
+export const selectTransactionTagSchema = createSelectSchema(transactionTags);
 
 // ---------------------------------------------------------------------------
 // tRPC input schemas (shared with frontend form validation)
@@ -150,3 +178,9 @@ export type NewTransaction = typeof transactions.$inferInsert;
 
 export type ColumnMapping = typeof columnMappings.$inferSelect;
 export type NewColumnMapping = typeof columnMappings.$inferInsert;
+
+export type Tag = typeof tags.$inferSelect;
+export type NewTag = typeof tags.$inferInsert;
+
+export type TransactionTag = typeof transactionTags.$inferSelect;
+export type NewTransactionTag = typeof transactionTags.$inferInsert;

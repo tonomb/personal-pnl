@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ColumnMapper, type MappingState } from "@/components/upload/ColumnMapper";
 import { DropZone } from "@/components/upload/DropZone";
+import { RawPreviewPanel } from "@/components/upload/RawPreviewPanel";
 import { SheetSelector } from "@/components/upload/SheetSelector";
 import { generateFingerprint, generateTransactionId, parseAmount } from "@/lib/csv";
 import { getSheetNames, xlsxToCsvString } from "@/lib/xlsx";
@@ -330,13 +331,16 @@ function UploadPage() {
               </div>
 
               {status.phase === "mapping" && (
-                <ColumnMapper
-                  fileName={name}
-                  headers={status.headers}
-                  previewRows={status.rawRows.slice(0, 5).map((row) => status.headers.map((h) => row[h] ?? ""))}
-                  onConfirm={(mapping) => handleMappingConfirm(name, mapping)}
-                  onCancel={() => updateFile(name, undefined)}
-                />
+                <>
+                  <RawPreviewPanel headers={status.headers} rawRows={status.rawRows} />
+                  <ColumnMapper
+                    fileName={name}
+                    headers={status.headers}
+                    previewRows={status.rawRows.slice(0, 5).map((row) => status.headers.map((h) => row[h] ?? ""))}
+                    onConfirm={(mapping) => handleMappingConfirm(name, mapping)}
+                    onCancel={() => updateFile(name, undefined)}
+                  />
+                </>
               )}
             </li>
           ))}

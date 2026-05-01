@@ -11,6 +11,25 @@ export type TransactionWithCategory = Transaction & {
 
 export type TagWithCount = Tag & { transactionCount: number };
 
+export type TagReportCategoryBreakdown = {
+  categoryId: number;
+  categoryName: string;
+  groupType: "INCOME" | "FIXED" | "VARIABLE";
+  total: number;
+};
+
+export type TagReportTransaction = Transaction & { tags: Tag[] };
+
+export type TagReport = {
+  tag: Tag;
+  totalIncome: number;
+  totalSpend: number;
+  net: number;
+  byCategory: TagReportCategoryBreakdown[];
+  transactions: TagReportTransaction[];
+  dateRange: { from: string; to: string } | null;
+};
+
 export type GroupedTransaction = {
   description: string;
   count: number;
@@ -132,7 +151,13 @@ export const appRouter = router({
       .mutation((): { assigned: number } => ({ assigned: 0 })),
     removeFromTransactions: publicProcedure
       .input((v: unknown) => v as { tagId: string; transactionIds: string[] })
-      .mutation((): { removed: number } => ({ removed: 0 }))
+      .mutation((): { removed: number } => ({ removed: 0 })),
+    getReport: publicProcedure
+      .input((v: unknown) => v as { tagId: string })
+      .query((): TagReport => null as unknown as TagReport),
+    getReportByName: publicProcedure
+      .input((v: unknown) => v as { name: string })
+      .query((): TagReport => null as unknown as TagReport)
   }),
   transactions: router({
     list: publicProcedure

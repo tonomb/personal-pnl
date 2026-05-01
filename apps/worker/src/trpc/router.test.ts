@@ -211,8 +211,6 @@ describe("transactions.categorize", () => {
 });
 
 describe("transactions.list", () => {
-  const aMapping = { fileFingerprint: "fp", dateCol: "Date", descriptionCol: "Desc", amountCol: "Amount" };
-
   const tx1 = {
     id: "tx-1",
     date: "2024-01-15",
@@ -1289,6 +1287,251 @@ describe("tags.removeFromTransactions", () => {
     expect(result.removed).toBe(150);
     const remaining = await db.select().from(transactionTags).where(eq(transactionTags.tagId, tag.id));
     expect(remaining).toHaveLength(0);
+  });
+});
+
+describe("tags.getReport", () => {
+  it("returns an empty report for a tag with no transactions", async () => {
+    const caller = makeCaller();
+    const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+
+    const report = await caller.tags.getReport({ tagId: tag.id });
+
+    expect(report.tag.id).toBe(tag.id);
+    expect(report.tag.name).toBe("Travel");
+    expect(report.totalIncome).toBe(0);
+    expect(report.totalSpend).toBe(0);
+    expect(report.net).toBe(0);
+    expect(report.byCategory).toEqual([]);
+    expect(report.transactions).toEqual([]);
+    expect(report.dateRange).toBeNull();
+  });
+
+  it("throws NOT_FOUND when the tag does not exist", async () => {
+    await expect(makeCaller().tags.getReport({ tagId: "missing-tag-id" })).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
+  });
+
+  it("totals income, spend, and net, and groups by category for tagged transactions", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "NY Trip", color: "#3B82F6" });
+    const [salary] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    const [hotel] = await db.insert(categories).values({ name: "Hotel", groupType: "FIXED" }).returning();
+    const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+
+    await db.insert(transactions).values([
+      // Income: refund as CREDIT in INCOME
+      { id: "ny-1", date: "2024-03-04", description: "Refund", amount: 50, type: "CREDIT", categoryId: salary!.id },
+      // Fixed expense: hotel
+      { id: "ny-2", date: "2024-03-05", description: "Hotel", amount: 600, type: "DEBIT", categoryId: hotel!.id },
+      // Variable expense: dinner x 2
+      { id: "ny-3", date: "2024-03-06", description: "Dinner", amount: 80, type: "DEBIT", categoryId: food!.id },
+      { id: "ny-4", date: "2024-03-07", description: "Lunch", amount: 40, type: "DEBIT", categoryId: food!.id }
+    ]);
+    await caller.tags.assignToTransactions({
+      tagId: tag.id,
+      transactionIds: ["ny-1", "ny-2", "ny-3", "ny-4"]
+    });
+
+    const report = await caller.tags.getReport({ tagId: tag.id });
+
+    expect(report.totalIncome).toBe(50);
+    expect(report.totalSpend).toBe(720);
+    expect(report.net).toBe(-670);
+    const byCat = Object.fromEntries(report.byCategory.map((c) => [c.categoryName, c]));
+    expect(byCat.Salary).toEqual({
+      categoryId: salary!.id,
+      categoryName: "Salary",
+      groupType: "INCOME",
+      total: 50
+    });
+    expect(byCat.Hotel).toEqual({
+      categoryId: hotel!.id,
+      categoryName: "Hotel",
+      groupType: "FIXED",
+      total: 600
+    });
+    expect(byCat.Food).toEqual({
+      categoryId: food!.id,
+      categoryName: "Food",
+      groupType: "VARIABLE",
+      total: 120
+    });
+  });
+
+  it("excludes IGNORED-category transactions from totals and byCategory", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "NY Trip", color: "#3B82F6" });
+    const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+    const [transfer] = await db.insert(categories).values({ name: "Transfer", groupType: "IGNORED" }).returning();
+
+    await db.insert(transactions).values([
+      { id: "ig-1", date: "2024-03-05", description: "Dinner", amount: 80, type: "DEBIT", categoryId: food!.id },
+      { id: "ig-2", date: "2024-03-06", description: "Transfer", amount: 500, type: "DEBIT", categoryId: transfer!.id }
+    ]);
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["ig-1", "ig-2"] });
+
+    const report = await caller.tags.getReport({ tagId: tag.id });
+
+    expect(report.totalSpend).toBe(80);
+    expect(report.net).toBe(-80);
+    expect(report.byCategory.map((c) => c.categoryName)).toEqual(["Food"]);
+  });
+
+  it("excludes uncategorized tagged transactions from totals and byCategory", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "NY Trip", color: "#3B82F6" });
+    const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+
+    await db.insert(transactions).values([
+      { id: "u-1", date: "2024-03-05", description: "Dinner", amount: 80, type: "DEBIT", categoryId: food!.id },
+      { id: "u-2", date: "2024-03-06", description: "Mystery", amount: 30, type: "DEBIT", categoryId: null }
+    ]);
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["u-1", "u-2"] });
+
+    const report = await caller.tags.getReport({ tagId: tag.id });
+
+    expect(report.totalSpend).toBe(80);
+    expect(report.byCategory.map((c) => c.categoryName)).toEqual(["Food"]);
+  });
+
+  it("excludes only the requested tag's transactions, ignoring other tags", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const ny = await caller.tags.create({ name: "NY Trip", color: "#3B82F6" });
+    const work = await caller.tags.create({ name: "Work", color: "#10B981" });
+    const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+
+    await db.insert(transactions).values([
+      { id: "iso-1", date: "2024-03-05", description: "NY Dinner", amount: 80, type: "DEBIT", categoryId: food!.id },
+      { id: "iso-2", date: "2024-03-06", description: "Work Lunch", amount: 30, type: "DEBIT", categoryId: food!.id }
+    ]);
+    await caller.tags.assignToTransactions({ tagId: ny.id, transactionIds: ["iso-1"] });
+    await caller.tags.assignToTransactions({ tagId: work.id, transactionIds: ["iso-2"] });
+
+    const report = await caller.tags.getReport({ tagId: ny.id });
+
+    expect(report.totalSpend).toBe(80);
+    expect(report.transactions.map((t) => t.id)).toEqual(["iso-1"]);
+  });
+
+  it("attaches all assigned tags onto each returned transaction", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const ny = await caller.tags.create({ name: "NY Trip", color: "#3B82F6" });
+    const food = await caller.tags.create({ name: "Foodie", color: "#10B981" });
+    const [foodCat] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+
+    await db.insert(transactions).values({
+      id: "tx-multi",
+      date: "2024-03-05",
+      description: "Dinner",
+      amount: 50,
+      type: "DEBIT",
+      categoryId: foodCat!.id
+    });
+    await caller.tags.assignToTransactions({ tagId: ny.id, transactionIds: ["tx-multi"] });
+    await caller.tags.assignToTransactions({ tagId: food.id, transactionIds: ["tx-multi"] });
+
+    const report = await caller.tags.getReport({ tagId: ny.id });
+
+    expect(report.transactions).toHaveLength(1);
+    const tagNames = report.transactions[0]!.tags.map((t) => t.name).sort();
+    expect(tagNames).toEqual(["Foodie", "NY Trip"]);
+  });
+
+  it("derives dateRange from earliest and latest transaction dates (including IGNORED)", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "NY Trip", color: "#3B82F6" });
+    const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+    const [ignored] = await db.insert(categories).values({ name: "Transfer", groupType: "IGNORED" }).returning();
+
+    await db.insert(transactions).values([
+      { id: "d-1", date: "2024-03-09", description: "Late", amount: 10, type: "DEBIT", categoryId: food!.id },
+      { id: "d-2", date: "2024-03-03", description: "Early", amount: 10, type: "DEBIT", categoryId: food!.id },
+      { id: "d-3", date: "2024-03-06", description: "Middle", amount: 10, type: "DEBIT", categoryId: ignored!.id }
+    ]);
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["d-1", "d-2", "d-3"] });
+
+    const report = await caller.tags.getReport({ tagId: tag.id });
+
+    expect(report.dateRange).toEqual({ from: "2024-03-03", to: "2024-03-09" });
+  });
+
+  it("rounds totals to 2 decimal places to avoid floating-point drift", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "FP", color: "#3B82F6" });
+    const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+
+    await db.insert(transactions).values([
+      { id: "fp-1", date: "2024-03-05", description: "a", amount: 0.1, type: "DEBIT", categoryId: food!.id },
+      { id: "fp-2", date: "2024-03-06", description: "b", amount: 0.2, type: "DEBIT", categoryId: food!.id }
+    ]);
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["fp-1", "fp-2"] });
+
+    const report = await caller.tags.getReport({ tagId: tag.id });
+
+    expect(report.totalSpend).toBe(0.3);
+    expect(report.byCategory[0]!.total).toBe(0.3);
+  });
+});
+
+describe("tags.getReportByName", () => {
+  it("matches case-insensitively and returns the same TagReport shape", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "NY Trip", color: "#3B82F6" });
+    const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
+    await db.insert(transactions).values({
+      id: "n-1",
+      date: "2024-03-05",
+      description: "Dinner",
+      amount: 50,
+      type: "DEBIT",
+      categoryId: food!.id
+    });
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["n-1"] });
+
+    const report = await caller.tags.getReportByName({ name: "ny trip" });
+
+    expect(report.tag.id).toBe(tag.id);
+    expect(report.totalSpend).toBe(50);
+  });
+
+  it("matches a partial substring of the tag name", async () => {
+    const caller = makeCaller();
+    const tag = await caller.tags.create({ name: "New York 2026", color: "#3B82F6" });
+
+    const report = await caller.tags.getReportByName({ name: "york" });
+
+    expect(report.tag.id).toBe(tag.id);
+  });
+
+  it("prefers the shortest matching tag when multiple tags match", async () => {
+    const caller = makeCaller();
+    const food = await caller.tags.create({ name: "Food", color: "#3B82F6" });
+    await caller.tags.create({ name: "Food Delivery", color: "#10B981" });
+    await caller.tags.create({ name: "Foodie Travel", color: "#F59E0B" });
+
+    const report = await caller.tags.getReportByName({ name: "food" });
+
+    expect(report.tag.id).toBe(food.id);
+    expect(report.tag.name).toBe("Food");
+  });
+
+  it("throws NOT_FOUND when no tag matches the name", async () => {
+    const caller = makeCaller();
+    await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+
+    await expect(caller.tags.getReportByName({ name: "nonexistent" })).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
   });
 });
 

@@ -3,7 +3,7 @@ import { and, count, desc, eq, inArray, isNull, like, sql, type SQL } from "driz
 import { WorkersLogger } from "workers-tagged-logger";
 import { z } from "zod";
 
-import type { KpiSummary, Tag } from "@pnl/types";
+import type { KpiSummary, Tag, TagReport, TagReportCategoryBreakdown, TagReportTransaction } from "@pnl/types";
 import {
   assignTagInputSchema,
   buildMonthlyPnL,
@@ -22,6 +22,8 @@ import {
   pnlGetMonthInputSchema,
   pnlGetReportInputSchema,
   removeTagInputSchema,
+  tagGetReportByNameInputSchema,
+  tagGetReportInputSchema,
   tags,
   transactionGroupedInputSchema,
   transactionInputSchema,
@@ -50,6 +52,105 @@ function chunks<T>(arr: T[], size: number): T[][] {
 
 function round2(x: number): number {
   return Math.round(x * 100) / 100;
+}
+
+async function buildTagReport(db: TRPCContext["db"], tag: Tag): Promise<TagReport> {
+  const rows = await db
+    .select({
+      id: transactions.id,
+      date: transactions.date,
+      description: transactions.description,
+      amount: transactions.amount,
+      type: transactions.type,
+      categoryId: transactions.categoryId,
+      sourceFile: transactions.sourceFile,
+      rawRow: transactions.rawRow,
+      createdAt: transactions.createdAt,
+      categoryName: categories.name,
+      categoryGroupType: categories.groupType
+    })
+    .from(transactions)
+    .innerJoin(transactionTags, eq(transactionTags.transactionId, transactions.id))
+    .leftJoin(categories, eq(transactions.categoryId, categories.id))
+    .where(eq(transactionTags.tagId, tag.id))
+    .orderBy(transactions.date);
+
+  const txIds = rows.map((r) => r.id);
+  const tagsByTx = new Map<string, Tag[]>();
+  if (txIds.length > 0) {
+    const idChunks = chunks(txIds, 90);
+    type TagJoinRow = { transactionId: string; id: string; name: string; color: string; createdAt: string };
+    const tagRowsBatched = (await (db.batch as unknown as (s: unknown[]) => Promise<unknown>)(
+      idChunks.map((chunk) =>
+        db
+          .select({
+            transactionId: transactionTags.transactionId,
+            id: tags.id,
+            name: tags.name,
+            color: tags.color,
+            createdAt: tags.createdAt
+          })
+          .from(transactionTags)
+          .innerJoin(tags, eq(tags.id, transactionTags.tagId))
+          .where(inArray(transactionTags.transactionId, chunk))
+      )
+    )) as TagJoinRow[][];
+    for (const row of tagRowsBatched.flat()) {
+      const { transactionId, ...t } = row;
+      const list = tagsByTx.get(transactionId) ?? [];
+      list.push(t);
+      tagsByTx.set(transactionId, list);
+    }
+  }
+
+  const txTransaction = rows.map(({ categoryName: _n, categoryGroupType: _g, ...t }) => ({
+    ...t,
+    tags: tagsByTx.get(t.id) ?? [tag]
+  })) satisfies TagReportTransaction[];
+
+  const byCatMap = new Map<number, TagReportCategoryBreakdown>();
+  let totalIncome = 0;
+  let totalSpend = 0;
+  let minDate: string | null = null;
+  let maxDate: string | null = null;
+
+  for (const row of rows) {
+    if (minDate === null || row.date < minDate) minDate = row.date;
+    if (maxDate === null || row.date > maxDate) maxDate = row.date;
+
+    const groupType = row.categoryGroupType as "INCOME" | "FIXED" | "VARIABLE" | "IGNORED" | null;
+    if (groupType !== "INCOME" && groupType !== "FIXED" && groupType !== "VARIABLE") continue;
+    if (row.categoryId === null || row.categoryName === null) continue;
+
+    if (row.type === "CREDIT" && groupType === "INCOME") {
+      totalIncome = round2(totalIncome + row.amount);
+    }
+    if (row.type === "DEBIT") {
+      totalSpend = round2(totalSpend + row.amount);
+    }
+
+    const existing = byCatMap.get(row.categoryId);
+    if (existing) {
+      existing.total = round2(existing.total + row.amount);
+    } else {
+      byCatMap.set(row.categoryId, {
+        categoryId: row.categoryId,
+        categoryName: row.categoryName,
+        groupType,
+        total: round2(row.amount)
+      });
+    }
+  }
+
+  return {
+    tag,
+    totalIncome,
+    totalSpend,
+    net: round2(totalIncome - totalSpend),
+    byCategory: [...byCatMap.values()],
+    transactions: txTransaction,
+    dateRange: minDate && maxDate ? { from: minDate, to: maxDate } : null
+  };
 }
 
 export const appRouter = router({
@@ -168,6 +269,27 @@ export const appRouter = router({
         )
       );
       return { removed: input.transactionIds.length };
+    }),
+
+    getReport: publicProcedure.input(tagGetReportInputSchema).query(async ({ input, ctx }) => {
+      const [tag] = await ctx.db.select().from(tags).where(eq(tags.id, input.tagId)).limit(1);
+      if (!tag) {
+        throw new TRPCError({ code: "NOT_FOUND", message: `Tag ${input.tagId} not found` });
+      }
+      return buildTagReport(ctx.db, tag);
+    }),
+
+    getReportByName: publicProcedure.input(tagGetReportByNameInputSchema).query(async ({ input, ctx }) => {
+      const [tag] = await ctx.db
+        .select()
+        .from(tags)
+        .where(sql`LOWER(${tags.name}) LIKE LOWER('%' || ${input.name} || '%')`)
+        .orderBy(sql`LENGTH(${tags.name}) ASC`)
+        .limit(1);
+      if (!tag) {
+        throw new TRPCError({ code: "NOT_FOUND", message: `No tag matches "${input.name}"` });
+      }
+      return buildTagReport(ctx.db, tag);
     })
   }),
 

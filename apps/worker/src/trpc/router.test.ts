@@ -4,7 +4,15 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import * as schema from "@pnl/types";
-import { categories, columnMappings, transactionInputSchema, transactions } from "@pnl/types";
+import {
+  categories,
+  columnMappings,
+  createTagInputSchema,
+  tags,
+  transactionInputSchema,
+  transactions,
+  transactionTags
+} from "@pnl/types";
 
 import { appRouter } from "./router";
 
@@ -18,6 +26,8 @@ function makeCaller() {
 
 beforeEach(async () => {
   const db = makeDb();
+  await db.delete(transactionTags);
+  await db.delete(tags);
   await db.delete(transactions);
   await db.delete(columnMappings);
   await db.delete(categories);
@@ -1007,5 +1017,357 @@ describe("pnl.getKpis", () => {
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
 
     expect(result.vsLastMonth).toBeNull();
+  });
+});
+
+describe("tags.list", () => {
+  it("returns empty array when no tags exist", async () => {
+    const result = await makeCaller().tags.list();
+    expect(result).toEqual([]);
+  });
+
+  it("returns tag with transactionCount: 0 when unassigned", async () => {
+    await makeCaller().tags.create({ name: "Travel", color: "#3B82F6" });
+
+    const result = await makeCaller().tags.list();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.name).toBe("Travel");
+    expect(result[0]!.color).toBe("#3B82F6");
+    expect(result[0]!.transactionCount).toBe(0);
+  });
+
+  it("returns correct transaction counts and orders tags by name", async () => {
+    const db = makeDb();
+    const caller = makeCaller();
+
+    const travel = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+    const food = await caller.tags.create({ name: "Food", color: "#10B981" });
+    const work = await caller.tags.create({ name: "Work", color: "#F59E0B" });
+
+    await db.insert(transactions).values([
+      { id: "tx-1", date: "2024-01-01", description: "A", amount: 1, type: "DEBIT" },
+      { id: "tx-2", date: "2024-01-02", description: "B", amount: 2, type: "DEBIT" },
+      { id: "tx-3", date: "2024-01-03", description: "C", amount: 3, type: "DEBIT" }
+    ]);
+    await db.insert(transactionTags).values([
+      { transactionId: "tx-1", tagId: travel.id },
+      { transactionId: "tx-2", tagId: travel.id },
+      { transactionId: "tx-3", tagId: food.id }
+    ]);
+
+    const result = await caller.tags.list();
+
+    expect(result.map((t) => t.name)).toEqual(["Food", "Travel", "Work"]);
+    expect(result.find((t) => t.name === "Travel")!.transactionCount).toBe(2);
+    expect(result.find((t) => t.name === "Food")!.transactionCount).toBe(1);
+    expect(result.find((t) => t.name === "Work")!.transactionCount).toBe(0);
+    expect(work).toBeTruthy();
+  });
+});
+
+describe("tags.create", () => {
+  it("creates a tag and returns it with a generated id", async () => {
+    const created = await makeCaller().tags.create({ name: "Travel", color: "#3B82F6" });
+
+    expect(created.id).toBeTruthy();
+    expect(created.name).toBe("Travel");
+    expect(created.color).toBe("#3B82F6");
+    expect(created.createdAt).toBeTruthy();
+
+    const persisted = await makeDb().select().from(tags).where(eq(tags.id, created.id));
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]!.name).toBe("Travel");
+  });
+
+  it("throws CONFLICT when the name already exists", async () => {
+    const caller = makeCaller();
+    await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+
+    await expect(caller.tags.create({ name: "Travel", color: "#FF0000" })).rejects.toMatchObject({
+      code: "CONFLICT"
+    });
+  });
+
+  it("input schema rejects empty name (after trim)", () => {
+    const result = createTagInputSchema.safeParse({ name: "   ", color: "#3B82F6" });
+    expect(result.success).toBe(false);
+  });
+
+  it("input schema rejects color that is not a #RRGGBB hex string", () => {
+    expect(createTagInputSchema.safeParse({ name: "Travel", color: "blue" }).success).toBe(false);
+    expect(createTagInputSchema.safeParse({ name: "Travel", color: "#abc" }).success).toBe(false);
+    expect(createTagInputSchema.safeParse({ name: "Travel", color: "#GGGGGG" }).success).toBe(false);
+  });
+
+  it("trims whitespace around the name", async () => {
+    const created = await makeCaller().tags.create({ name: "  Travel  ", color: "#3B82F6" });
+    expect(created.name).toBe("Travel");
+  });
+});
+
+describe("tags.delete", () => {
+  it("removes the tag and returns deletedId", async () => {
+    const caller = makeCaller();
+    const created = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+
+    const result = await caller.tags.delete({ id: created.id });
+
+    expect(result.deletedId).toBe(created.id);
+    const remaining = await makeDb().select().from(tags).where(eq(tags.id, created.id));
+    expect(remaining).toHaveLength(0);
+  });
+
+  it("throws NOT_FOUND when the tag does not exist", async () => {
+    await expect(makeCaller().tags.delete({ id: "missing-id" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("cascades: transaction_tags rows for the deleted tag are removed", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+
+    await db
+      .insert(transactions)
+      .values({ id: "tx-cascade-1", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await db.insert(transactionTags).values({ transactionId: "tx-cascade-1", tagId: tag.id });
+
+    await caller.tags.delete({ id: tag.id });
+
+    const remaining = await db.select().from(transactionTags).where(eq(transactionTags.tagId, tag.id));
+    expect(remaining).toHaveLength(0);
+  });
+});
+
+describe("tags.assignToTransactions", () => {
+  it("assigns a tag to multiple transactions", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+
+    await db.insert(transactions).values([
+      { id: "tx-a", date: "2024-01-01", description: "a", amount: 1, type: "DEBIT" },
+      { id: "tx-b", date: "2024-01-02", description: "b", amount: 2, type: "DEBIT" }
+    ]);
+
+    const result = await caller.tags.assignToTransactions({
+      tagId: tag.id,
+      transactionIds: ["tx-a", "tx-b"]
+    });
+
+    expect(result.assigned).toBe(2);
+    const rows = await db.select().from(transactionTags).where(eq(transactionTags.tagId, tag.id));
+    expect(rows.map((r) => r.transactionId).sort()).toEqual(["tx-a", "tx-b"]);
+  });
+
+  it("is idempotent: re-assigning the same tag does not error or duplicate rows", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+
+    await db
+      .insert(transactions)
+      .values({ id: "tx-idem", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["tx-idem"] });
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["tx-idem"] });
+
+    const rows = await db.select().from(transactionTags).where(eq(transactionTags.tagId, tag.id));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("throws NOT_FOUND when tagId does not exist", async () => {
+    const db = makeDb();
+    await db
+      .insert(transactions)
+      .values({ id: "tx-x", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+
+    await expect(
+      makeCaller().tags.assignToTransactions({ tagId: "missing-tag", transactionIds: ["tx-x"] })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("handles batches larger than the per-statement param limit", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "Bulk", color: "#3B82F6" });
+
+    const txValues = Array.from({ length: 150 }, (_, i) => ({
+      id: `tx-bulk-${i}`,
+      date: "2024-01-01",
+      description: `bulk-${i}`,
+      amount: 1,
+      type: "DEBIT" as const
+    }));
+    // Insert transactions in chunks of 10 to respect the same D1 param limits
+    for (let i = 0; i < txValues.length; i += 10) {
+      await db.insert(transactions).values(txValues.slice(i, i + 10));
+    }
+
+    const result = await caller.tags.assignToTransactions({
+      tagId: tag.id,
+      transactionIds: txValues.map((t) => t.id)
+    });
+
+    expect(result.assigned).toBe(150);
+    const rows = await db.select().from(transactionTags).where(eq(transactionTags.tagId, tag.id));
+    expect(rows).toHaveLength(150);
+  });
+});
+
+describe("tags.removeFromTransactions", () => {
+  it("removes the tag link from the specified transactions", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+
+    await db.insert(transactions).values([
+      { id: "tx-r1", date: "2024-01-01", description: "a", amount: 1, type: "DEBIT" },
+      { id: "tx-r2", date: "2024-01-02", description: "b", amount: 2, type: "DEBIT" }
+    ]);
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["tx-r1", "tx-r2"] });
+
+    const result = await caller.tags.removeFromTransactions({ tagId: tag.id, transactionIds: ["tx-r1"] });
+
+    expect(result.removed).toBe(1);
+    const remaining = await db.select().from(transactionTags).where(eq(transactionTags.tagId, tag.id));
+    expect(remaining.map((r) => r.transactionId)).toEqual(["tx-r2"]);
+  });
+
+  it("is a no-op when transactions are not tagged", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+    await db
+      .insert(transactions)
+      .values({ id: "tx-noop", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+
+    const result = await caller.tags.removeFromTransactions({ tagId: tag.id, transactionIds: ["tx-noop"] });
+    expect(result.removed).toBe(1);
+  });
+
+  it("does not affect other tags on the same transaction", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const travel = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+    const food = await caller.tags.create({ name: "Food", color: "#10B981" });
+
+    await db
+      .insert(transactions)
+      .values({ id: "tx-multi", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await caller.tags.assignToTransactions({ tagId: travel.id, transactionIds: ["tx-multi"] });
+    await caller.tags.assignToTransactions({ tagId: food.id, transactionIds: ["tx-multi"] });
+
+    await caller.tags.removeFromTransactions({ tagId: travel.id, transactionIds: ["tx-multi"] });
+
+    const remaining = await db.select().from(transactionTags).where(eq(transactionTags.transactionId, "tx-multi"));
+    expect(remaining.map((r) => r.tagId)).toEqual([food.id]);
+  });
+
+  it("handles batches larger than the per-statement param limit", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "Bulk", color: "#3B82F6" });
+
+    const txValues = Array.from({ length: 150 }, (_, i) => ({
+      id: `tx-rm-bulk-${i}`,
+      date: "2024-01-01",
+      description: `bulk-${i}`,
+      amount: 1,
+      type: "DEBIT" as const
+    }));
+    for (let i = 0; i < txValues.length; i += 10) {
+      await db.insert(transactions).values(txValues.slice(i, i + 10));
+    }
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: txValues.map((t) => t.id) });
+
+    const result = await caller.tags.removeFromTransactions({
+      tagId: tag.id,
+      transactionIds: txValues.map((t) => t.id)
+    });
+
+    expect(result.removed).toBe(150);
+    const remaining = await db.select().from(transactionTags).where(eq(transactionTags.tagId, tag.id));
+    expect(remaining).toHaveLength(0);
+  });
+});
+
+describe("transactions.list with tags", () => {
+  it("returns tags: [] for transactions with no tags", async () => {
+    await makeDb()
+      .insert(transactions)
+      .values({ id: "tx-untagged", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+
+    const result = await makeCaller().transactions.list({});
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]!.tags).toEqual([]);
+  });
+
+  it("includes assigned tags on each transaction, scoped per row", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const travel = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+    const food = await caller.tags.create({ name: "Food", color: "#10B981" });
+
+    await db.insert(transactions).values([
+      { id: "tx-t1", date: "2024-01-02", description: "a", amount: 1, type: "DEBIT" },
+      { id: "tx-t2", date: "2024-01-01", description: "b", amount: 2, type: "DEBIT" }
+    ]);
+    await caller.tags.assignToTransactions({ tagId: travel.id, transactionIds: ["tx-t1", "tx-t2"] });
+    await caller.tags.assignToTransactions({ tagId: food.id, transactionIds: ["tx-t1"] });
+
+    const result = await caller.transactions.list({});
+
+    const t1 = result.rows.find((r) => r.id === "tx-t1")!;
+    const t2 = result.rows.find((r) => r.id === "tx-t2")!;
+    expect(t1.tags.map((t) => t.name).sort()).toEqual(["Food", "Travel"]);
+    expect(t2.tags.map((t) => t.name)).toEqual(["Travel"]);
+  });
+
+  it("tags carry id, name, color, and createdAt", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const travel = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+    await db
+      .insert(transactions)
+      .values({ id: "tx-shape", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await caller.tags.assignToTransactions({ tagId: travel.id, transactionIds: ["tx-shape"] });
+
+    const result = await caller.transactions.list({});
+
+    expect(result.rows[0]!.tags[0]).toEqual({
+      id: travel.id,
+      name: "Travel",
+      color: "#3B82F6",
+      createdAt: travel.createdAt
+    });
+  });
+
+  it("preserves pagination when tags are loaded", async () => {
+    const caller = makeCaller();
+    const db = makeDb();
+    const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+
+    const txValues = Array.from({ length: 5 }, (_, i) => ({
+      id: `tx-page-${i}`,
+      date: `2024-01-0${i + 1}`,
+      description: `d${i}`,
+      amount: 1,
+      type: "DEBIT" as const
+    }));
+    await db.insert(transactions).values(txValues);
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: txValues.map((t) => t.id) });
+
+    const page1 = await caller.transactions.list({ limit: 2, offset: 0 });
+    const page2 = await caller.transactions.list({ limit: 2, offset: 2 });
+
+    expect(page1.rows).toHaveLength(2);
+    expect(page2.rows).toHaveLength(2);
+    expect(page1.total).toBe(5);
+    for (const row of [...page1.rows, ...page2.rows]) {
+      expect(row.tags).toHaveLength(1);
+      expect(row.tags[0]!.name).toBe("Travel");
+    }
   });
 });

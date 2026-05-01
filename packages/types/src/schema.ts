@@ -85,6 +85,23 @@ export const selectTagSchema = createSelectSchema(tags);
 export const insertTransactionTagSchema = createInsertSchema(transactionTags);
 export const selectTransactionTagSchema = createSelectSchema(transactionTags);
 
+export const createTagInputSchema = z.object({
+  name: z.string().trim().min(1, "Name cannot be empty").max(64, "Name too long"),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color must be #RRGGBB hex")
+});
+
+export const deleteTagInputSchema = z.object({ id: z.string().min(1) });
+
+export const assignTagInputSchema = z.object({
+  tagId: z.string().min(1),
+  transactionIds: z.array(z.string().min(1)).min(1).max(500)
+});
+
+export const removeTagInputSchema = z.object({
+  tagId: z.string().min(1),
+  transactionIds: z.array(z.string().min(1)).min(1).max(500)
+});
+
 // ---------------------------------------------------------------------------
 // tRPC input schemas (shared with frontend form validation)
 // ---------------------------------------------------------------------------

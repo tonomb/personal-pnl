@@ -1,12 +1,15 @@
 import { initTRPC } from "@trpc/server";
 
-import type { Category, ColumnMapping, NewColumnMapping, NewTransaction, Transaction } from "./schema";
+import type { Category, ColumnMapping, NewColumnMapping, NewTransaction, Tag, Transaction } from "./schema";
 
 export type TransactionWithCategory = Transaction & {
   categoryName: string | null;
   categoryGroupType: string | null;
   categoryColor: string | null;
+  tags: Tag[];
 };
+
+export type TagWithCount = Tag & { transactionCount: number };
 
 export type GroupedTransaction = {
   description: string;
@@ -113,6 +116,23 @@ export const appRouter = router({
     delete: publicProcedure
       .input((v: unknown) => v as { id: number })
       .mutation((): { deletedId: number } => ({ deletedId: 0 }))
+  }),
+  tags: router({
+    list: publicProcedure
+      .input((v: unknown) => v as void)
+      .query((): TagWithCount[] => null as unknown as TagWithCount[]),
+    create: publicProcedure
+      .input((v: unknown) => v as { name: string; color: string })
+      .mutation((): Tag => null as unknown as Tag),
+    delete: publicProcedure
+      .input((v: unknown) => v as { id: string })
+      .mutation((): { deletedId: string } => ({ deletedId: "" })),
+    assignToTransactions: publicProcedure
+      .input((v: unknown) => v as { tagId: string; transactionIds: string[] })
+      .mutation((): { assigned: number } => ({ assigned: 0 })),
+    removeFromTransactions: publicProcedure
+      .input((v: unknown) => v as { tagId: string; transactionIds: string[] })
+      .mutation((): { removed: number } => ({ removed: 0 }))
   }),
   transactions: router({
     list: publicProcedure

@@ -31,6 +31,7 @@ export type {
   MonthGroup,
   MonthlyPnL,
   PnLReport,
+  TagWithCount,
   TransactionListFilter,
   TransactionListInput,
   TransactionListResult,

@@ -102,6 +102,12 @@ export const removeTagInputSchema = z.object({
   transactionIds: z.array(z.string().min(1)).min(1).max(500)
 });
 
+export const tagGetReportInputSchema = z.object({ tagId: z.string().min(1) });
+
+export const tagGetReportByNameInputSchema = z.object({
+  name: z.string().trim().min(1, "Name cannot be empty")
+});
+
 // ---------------------------------------------------------------------------
 // tRPC input schemas (shared with frontend form validation)
 // ---------------------------------------------------------------------------

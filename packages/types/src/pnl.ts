@@ -1,4 +1,7 @@
+import Decimal from "decimal.js";
 import { eq, sql } from "drizzle-orm";
+
+import { add, divide, safeDivide, subtract, toStorable } from "@pnl/money";
 
 import { categories, transactions } from "./schema";
 
@@ -18,10 +21,6 @@ export type PnlRow = {
   rowCount?: number;
 };
 
-function round2(x: number): number {
-  return Math.round(x * 100) / 100;
-}
-
 export function buildMonthlyPnL(month: string, rows: PnlRow[]): MonthlyPnL {
   const monthRows = rows.filter((r) => r.month === month);
 
@@ -34,34 +33,35 @@ export function buildMonthlyPnL(month: string, rows: PnlRow[]): MonthlyPnL {
     if (row.categoryId === null) continue;
     const ct: CategoryTotal = { categoryId: row.categoryId, categoryName: row.categoryName ?? "", total: 0 };
     if (row.groupType === "INCOME") {
-      ct.total = round2(row.creditTotal);
+      ct.total = toStorable(new Decimal(row.creditTotal));
       incomeItems.push(ct);
     } else if (row.groupType === "FIXED") {
-      ct.total = round2(row.debitTotal);
+      ct.total = toStorable(new Decimal(row.debitTotal));
       fixedItems.push(ct);
     } else if (row.groupType === "VARIABLE") {
-      ct.total = round2(row.debitTotal);
+      ct.total = toStorable(new Decimal(row.debitTotal));
       variableItems.push(ct);
     } else if (row.groupType === "IGNORED") {
-      ct.total = round2(row.creditTotal + row.debitTotal);
+      ct.total = toStorable(add(row.creditTotal, row.debitTotal));
       ignoredItems.push(ct);
     }
   }
 
-  const income = round2(incomeItems.reduce((s, c) => s + c.total, 0));
-  const fixed = round2(fixedItems.reduce((s, c) => s + c.total, 0));
-  const variable = round2(variableItems.reduce((s, c) => s + c.total, 0));
-  const net = round2(income - fixed - variable);
-  const savingsRate = income === 0 ? null : round2(net / income);
+  const incomeD = incomeItems.reduce((s, c) => add(s, c.total), new Decimal(0));
+  const fixedD = fixedItems.reduce((s, c) => add(s, c.total), new Decimal(0));
+  const variableD = variableItems.reduce((s, c) => add(s, c.total), new Decimal(0));
+  const netD = subtract(subtract(incomeD, fixedD), variableD);
+  const savingsRateD = safeDivide(netD, incomeD);
+  const ignoredD = ignoredItems.reduce((s, c) => add(s, c.total), new Decimal(0));
 
   return {
     month,
-    income: { total: income, items: incomeItems },
-    fixed: { total: fixed, items: fixedItems },
-    variable: { total: variable, items: variableItems },
-    ignored: { total: round2(ignoredItems.reduce((s, c) => s + c.total, 0)), items: ignoredItems },
-    net,
-    savingsRate
+    income: { total: toStorable(incomeD), items: incomeItems },
+    fixed: { total: toStorable(fixedD), items: fixedItems },
+    variable: { total: toStorable(variableD), items: variableItems },
+    ignored: { total: toStorable(ignoredD), items: ignoredItems },
+    net: toStorable(netD),
+    savingsRate: savingsRateD === null ? null : toStorable(savingsRateD)
   };
 }
 
@@ -96,15 +96,29 @@ export async function computePnlReport(db: PnlDb, year: number): Promise<PnLRepo
 
   const uncategorizedCount = rows.filter((r) => r.categoryId === null).reduce((s, r) => s + (r.rowCount ?? 0), 0);
 
-  const ytdIncome = round2(monthlyData.reduce((s, m) => s + m.income.total, 0));
-  const ytdExpenses = round2(monthlyData.reduce((s, m) => s + m.fixed.total + m.variable.total, 0));
-  const ytdNet = round2(ytdIncome - ytdExpenses);
+  const ytdIncomeD = monthlyData.reduce((s, m) => add(s, m.income.total), new Decimal(0));
+  const ytdExpensesD = monthlyData.reduce((s, m) => add(add(s, m.fixed.total), m.variable.total), new Decimal(0));
+  const ytdNetD = subtract(ytdIncomeD, ytdExpensesD);
 
   const nonNullRates = monthlyData.map((m) => m.savingsRate).filter((r): r is number => r !== null);
   const avgMonthlySavingsRate =
-    nonNullRates.length === 0 ? null : round2(nonNullRates.reduce((s, r) => s + r, 0) / nonNullRates.length);
+    nonNullRates.length === 0
+      ? null
+      : toStorable(
+          divide(
+            nonNullRates.reduce((s, r) => add(s, r), new Decimal(0)),
+            nonNullRates.length
+          )
+        );
 
-  return { months: monthlyData, ytdIncome, ytdExpenses, ytdNet, avgMonthlySavingsRate, uncategorizedCount };
+  return {
+    months: monthlyData,
+    ytdIncome: toStorable(ytdIncomeD),
+    ytdExpenses: toStorable(ytdExpensesD),
+    ytdNet: toStorable(ytdNetD),
+    avgMonthlySavingsRate,
+    uncategorizedCount
+  };
 }
 
 export async function computeMonthlyPnl(

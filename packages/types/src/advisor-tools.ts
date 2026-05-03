@@ -1,4 +1,7 @@
+import Decimal from "decimal.js";
 import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
+
+import { divide, multiply, safeDivide, subtract, toStorable } from "@pnl/money";
 
 import { buildMonthlyPnL, getSavingsRateBenchmark } from "./pnl";
 import { categories, transactions } from "./schema";
@@ -16,13 +19,9 @@ export type DataQuality = {
   warning: boolean;
 };
 
-function round2(x: number): number {
-  return Math.round(x * 100) / 100;
-}
-
 function pct(part: number, whole: number): number {
-  if (whole === 0) return 0;
-  return round2((part / whole) * 100);
+  const ratio = safeDivide(part, whole);
+  return ratio === null ? 0 : toStorable(multiply(ratio, 100));
 }
 
 function buildDataQuality(uncategorized: number, total: number): DataQuality {
@@ -101,7 +100,7 @@ export async function getFinancialHealthSnapshot(
   const vsLastMonth: FinancialHealthSnapshot["vsLastMonth"] = (() => {
     if (!hasPrevData) return null;
     const prev = buildMonthlyPnL(prevMonth, rows);
-    const delta = round2(curr.net - prev.net);
+    const delta = toStorable(subtract(curr.net, prev.net));
     const label: "BETTER" | "WORSE" | "SAME" = delta > 0 ? "BETTER" : delta < 0 ? "WORSE" : "SAME";
     return { delta, label };
   })();
@@ -198,17 +197,20 @@ export async function getBudgetVariance(db: PnlDb, month: string): Promise<Budge
 
   const rows: BudgetVarianceRow[] = [...byCategory.values()]
     .map((b) => {
-      const trailingAvg = round2(b.trailingTotal / 3);
-      const actual = round2(b.actual);
-      const variance = round2(actual - trailingAvg);
+      const trailingAvgD = divide(b.trailingTotal, 3);
+      const actualD = new Decimal(b.actual);
+      const varianceD = subtract(actualD, trailingAvgD);
+      const trailingAvg = toStorable(trailingAvgD);
+      const actual = toStorable(actualD);
+      const variance = toStorable(varianceD);
       const status: BudgetVarianceLabel = (() => {
         if (trailingAvg === 0) {
           if (actual === 0) return "ON_TRACK";
           return "OVER";
         }
-        const ratio = variance / trailingAvg;
-        if (ratio > BUDGET_VARIANCE_THRESHOLD) return "OVER";
-        if (ratio < -BUDGET_VARIANCE_THRESHOLD) return "UNDER";
+        const ratio = divide(varianceD, trailingAvgD);
+        if (ratio.gt(BUDGET_VARIANCE_THRESHOLD)) return "OVER";
+        if (ratio.lt(-BUDGET_VARIANCE_THRESHOLD)) return "UNDER";
         return "ON_TRACK";
       })();
       return {
@@ -295,9 +297,14 @@ export async function getCashflowTrend(
 
   const series: CashflowTrendPoint[] = periodMonths.map((m) => {
     const b = byMonth.get(m)!;
-    const income = round2(b.income);
-    const expenses = round2(b.expenses);
-    return { month: m, income, expenses, net: round2(income - expenses) };
+    const incomeD = new Decimal(b.income);
+    const expensesD = new Decimal(b.expenses);
+    return {
+      month: m,
+      income: toStorable(incomeD),
+      expenses: toStorable(expensesD),
+      net: toStorable(subtract(incomeD, expensesD))
+    };
   });
 
   const [totalRow] = await db.select({ total: count() }).from(transactions).where(inArray(monthExpr, periodMonths));

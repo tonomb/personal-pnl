@@ -21,7 +21,9 @@
     "db:seed:local": "wrangler d1 execute personal-pnl --config ../../apps/worker/wrangler.jsonc --file=./src/seed.sql"
   },
   "dependencies": {
+    "@pnl/money": "workspace:*",
     "@trpc/server": "11.1.0",
+    "decimal.js": "^10.5.0",
     "drizzle-orm": "0.44.2",
     "drizzle-zod": "0.8.0",
     "zod": "4.1.12"

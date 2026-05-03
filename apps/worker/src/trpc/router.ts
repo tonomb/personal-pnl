@@ -1,8 +1,10 @@
 import { initTRPC, TRPCError } from "@trpc/server";
+import Decimal from "decimal.js";
 import { and, count, desc, eq, inArray, isNull, like, sql, type SQL } from "drizzle-orm";
 import { WorkersLogger } from "workers-tagged-logger";
 import { z } from "zod";
 
+import { add, subtract, toStorable } from "@pnl/money";
 import type { KpiSummary, Tag, TagReport, TagReportCategoryBreakdown, TagReportTransaction } from "@pnl/types";
 import {
   assignTagInputSchema,
@@ -48,10 +50,6 @@ function chunks<T>(arr: T[], size: number): T[][] {
     result.push(arr.slice(i, i + size));
   }
   return result;
-}
-
-function round2(x: number): number {
-  return Math.round(x * 100) / 100;
 }
 
 async function buildTagReport(db: TRPCContext["db"], tag: Tag): Promise<TagReport> {
@@ -108,9 +106,15 @@ async function buildTagReport(db: TRPCContext["db"], tag: Tag): Promise<TagRepor
     tags: tagsByTx.get(t.id) ?? [tag]
   })) satisfies TagReportTransaction[];
 
-  const byCatMap = new Map<number, TagReportCategoryBreakdown>();
-  let totalIncome = 0;
-  let totalSpend = 0;
+  type CategoryBucket = {
+    categoryId: number;
+    categoryName: string;
+    groupType: "INCOME" | "FIXED" | "VARIABLE";
+    totalD: Decimal;
+  };
+  const byCatMap = new Map<number, CategoryBucket>();
+  let totalIncomeD = new Decimal(0);
+  let totalSpendD = new Decimal(0);
   let minDate: string | null = null;
   let maxDate: string | null = null;
 
@@ -123,31 +127,36 @@ async function buildTagReport(db: TRPCContext["db"], tag: Tag): Promise<TagRepor
     if (row.categoryId === null || row.categoryName === null) continue;
 
     if (row.type === "CREDIT" && groupType === "INCOME") {
-      totalIncome = round2(totalIncome + row.amount);
+      totalIncomeD = add(totalIncomeD, row.amount);
     }
     if (row.type === "DEBIT") {
-      totalSpend = round2(totalSpend + row.amount);
+      totalSpendD = add(totalSpendD, row.amount);
     }
 
     const existing = byCatMap.get(row.categoryId);
     if (existing) {
-      existing.total = round2(existing.total + row.amount);
+      existing.totalD = add(existing.totalD, row.amount);
     } else {
       byCatMap.set(row.categoryId, {
         categoryId: row.categoryId,
         categoryName: row.categoryName,
         groupType,
-        total: round2(row.amount)
+        totalD: new Decimal(row.amount)
       });
     }
   }
 
+  const byCategory: TagReportCategoryBreakdown[] = [...byCatMap.values()].map(({ totalD, ...rest }) => ({
+    ...rest,
+    total: toStorable(totalD)
+  }));
+
   return {
     tag,
-    totalIncome,
-    totalSpend,
-    net: round2(totalIncome - totalSpend),
-    byCategory: [...byCatMap.values()],
+    totalIncome: toStorable(totalIncomeD),
+    totalSpend: toStorable(totalSpendD),
+    net: toStorable(subtract(totalIncomeD, totalSpendD)),
+    byCategory,
     transactions: txTransaction,
     dateRange: minDate && maxDate ? { from: minDate, to: maxDate } : null
   };
@@ -607,7 +616,7 @@ export const appRouter = router({
       const vsLastMonth: KpiSummary["vsLastMonth"] = (() => {
         if (!hasPrevData) return null;
         const prev = buildMonthlyPnL(prevMonth, rows);
-        const delta = round2(curr.net - prev.net);
+        const delta = toStorable(subtract(curr.net, prev.net));
         const label: "BETTER" | "WORSE" | "SAME" = delta > 0 ? "BETTER" : delta < 0 ? "WORSE" : "SAME";
         return { delta, label };
       })();

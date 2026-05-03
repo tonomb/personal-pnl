@@ -299,6 +299,17 @@ export const appRouter = router({
       if (input.month) filters.push(like(transactions.date, `${input.month}%`));
       if (input.categoryId !== undefined) filters.push(eq(transactions.categoryId, input.categoryId));
       if (input.uncategorized) filters.push(isNull(transactions.categoryId));
+      if (input.tagId) {
+        filters.push(
+          inArray(
+            transactions.id,
+            ctx.db
+              .select({ id: transactionTags.transactionId })
+              .from(transactionTags)
+              .where(eq(transactionTags.tagId, input.tagId))
+          )
+        );
+      }
       const whereClause = filters.length ? and(...filters) : undefined;
 
       const rows = await ctx.db
@@ -360,6 +371,17 @@ export const appRouter = router({
       if (input?.month) filters.push(like(transactions.date, `${input.month}%`));
       if (input?.categoryId !== undefined) filters.push(eq(transactions.categoryId, input.categoryId));
       if (input?.uncategorized) filters.push(isNull(transactions.categoryId));
+      if (input?.tagId) {
+        filters.push(
+          inArray(
+            transactions.id,
+            ctx.db
+              .select({ id: transactionTags.transactionId })
+              .from(transactionTags)
+              .where(eq(transactionTags.tagId, input.tagId))
+          )
+        );
+      }
       const whereClause = filters.length ? and(...filters) : undefined;
 
       const rows = await ctx.db

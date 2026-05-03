@@ -63,3 +63,26 @@ describe("toDisplay", () => {
     expect(result).toContain("56");
   });
 });
+
+describe("regression: float drift", () => {
+  it("is exact when summing 0.1 one hundred times where raw float drifts", () => {
+    let raw = 0;
+    let d = new Decimal(0);
+    for (let i = 0; i < 100; i++) {
+      raw += 0.1;
+      d = add(d, 0.1);
+    }
+    expect(raw).not.toBe(10);
+    expect(toStorable(d)).toBe(10);
+  });
+
+  it("is exact for canonical 0.1 + 0.2 where raw float drifts", () => {
+    expect(0.1 + 0.2).not.toBe(0.3);
+    expect(toStorable(add(0.1, 0.2))).toBe(0.3);
+  });
+
+  it("rounds half-up away from zero on negatives (vs Math.round which rounds toward zero)", () => {
+    expect(Math.round(-0.005 * 100) / 100).toBe(-0);
+    expect(toStorable(new Decimal("-0.005"))).toBe(-0.01);
+  });
+});

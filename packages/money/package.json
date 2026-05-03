@@ -1,5 +1,5 @@
 {
-  "name": "@pnl/engine",
+  "name": "@pnl/money",
   "version": "0.1.0",
   "private": true,
   "sideEffects": false,
@@ -16,8 +16,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@pnl/money": "workspace:*",
-    "@pnl/types": "workspace:*",
     "decimal.js": "^10.5.0"
   },
   "devDependencies": {

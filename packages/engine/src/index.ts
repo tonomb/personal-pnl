@@ -1,3 +1,3 @@
 export * from "./types";
-export * from "./money";
+export * from "@pnl/money";
 export * from "./pnl";

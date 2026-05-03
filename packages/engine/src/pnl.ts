@@ -1,5 +1,5 @@
 import Decimal from "decimal.js";
-import { add, safeDivide } from "./money";
+import { add, safeDivide } from "@pnl/money";
 import type { PnlInput, PnlResult } from "./types";
 
 export function computePnl({ transactions, categories }: PnlInput): PnlResult {

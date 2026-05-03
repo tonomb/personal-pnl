@@ -117,7 +117,8 @@ export const monthFilterSchema = z.string().regex(/^\d{4}-\d{2}$/, "Month must b
 export const transactionFilterSchema = z.object({
   month: monthFilterSchema.optional(),
   categoryId: z.number().int().optional(),
-  uncategorized: z.boolean().optional()
+  uncategorized: z.boolean().optional(),
+  tagId: z.string().optional()
 });
 
 export const transactionListInputSchema = transactionFilterSchema.extend({

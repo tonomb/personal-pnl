@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRightIcon, SearchIcon } from "lucide-react";
+import { ChevronRightIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -18,10 +18,14 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { TagFilterSelect } from "@/components/tags/TagFilterSelect";
+import { TagPicker } from "@/components/tags/TagPicker";
+import { TagPill } from "@/components/tags/TagPill";
+import { getContrastColor } from "@/lib/color";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 
-import type { Category, TransactionWithCategory } from "@pnl/types";
+import type { Category, Tag, TransactionWithCategory } from "@pnl/types";
 
 export const Route = createFileRoute("/categorize")({
   component: CategorizePage
@@ -35,6 +39,7 @@ type Filters = {
   month: string | undefined;
   uncategorizedOnly: boolean;
   search: string;
+  tagId: string | undefined;
 };
 
 type MerchantRow = {
@@ -57,7 +62,8 @@ type FlatRow = MerchantRow | TxRow;
 // Helpers
 // ---------------------------------------------------------------------------
 
-const GRID = "grid-cols-[20px_minmax(0,1fr)_96px_148px] sm:grid-cols-[20px_minmax(0,1fr)_80px_100px_148px]";
+const GRID =
+  "grid-cols-[20px_minmax(0,1fr)_96px_minmax(160px,260px)] sm:grid-cols-[20px_minmax(0,1fr)_80px_100px_minmax(220px,1fr)]";
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
@@ -71,17 +77,6 @@ function formatDate(date: string): string {
 function formatMonthLabel(month: string): string {
   const [y, m] = month.split("-").map(Number);
   return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(new Date(y!, m! - 1, 1));
-}
-
-function getContrastColor(bg: string): string {
-  const hex = bg.replace("#", "");
-  if (hex.length !== 6) return "#ffffff";
-  const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  const r = toLinear(parseInt(hex.slice(0, 2), 16) / 255);
-  const g = toLinear(parseInt(hex.slice(2, 4), 16) / 255);
-  const b = toLinear(parseInt(hex.slice(4, 6), 16) / 255);
-  const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return L > 0.35 ? "#111827" : "#ffffff";
 }
 
 // ---------------------------------------------------------------------------
@@ -106,10 +101,12 @@ function ProgressHeader({ categorized, total }: { categorized: number; total: nu
 function FilterBar({
   filters,
   availableMonths,
+  tags,
   onChange
 }: {
   filters: Filters;
   availableMonths: string[];
+  tags: Tag[];
   onChange: (f: Filters) => void;
 }) {
   return (
@@ -139,6 +136,8 @@ function FilterBar({
         Uncategorized only
       </Button>
 
+      <TagFilterSelect tags={tags} value={filters.tagId} onChange={(tagId) => onChange({ ...filters, tagId })} />
+
       <div className="relative min-w-48 flex-1">
         <SearchIcon className="pointer-events-none absolute left-2.5 top-2 size-4 text-muted-foreground" />
         <Input
@@ -155,24 +154,30 @@ function FilterBar({
 function BulkAssignBar({
   selectedCount,
   catData,
+  tags,
   value,
   onValueChange,
   onApply,
+  onAssignTag,
+  onCreateTag,
   onClear,
   isPending
 }: {
   selectedCount: number;
   catData: { INCOME: Category[]; FIXED: Category[]; VARIABLE: Category[]; IGNORED: Category[] } | undefined;
+  tags: Tag[];
   value: string;
   onValueChange: (v: string) => void;
   onApply: () => void;
+  onAssignTag: (tagId: string) => void;
+  onCreateTag: (name: string, color: string) => Promise<Tag>;
   onClear: () => void;
   isPending: boolean;
 }) {
   const GROUPS = ["INCOME", "FIXED", "VARIABLE", "IGNORED"] as const;
 
   return (
-    <div className="flex items-center gap-2 py-1">
+    <div className="flex flex-wrap items-center gap-2 py-1">
       <span className="shrink-0 text-sm text-muted-foreground">{selectedCount} selected</span>
       <Select value={value} onValueChange={(v) => onValueChange(v as string)}>
         <SelectTrigger className="w-52">
@@ -199,12 +204,25 @@ function BulkAssignBar({
       <Button size="sm" onClick={onApply} disabled={!value || isPending}>
         Apply
       </Button>
+      <TagPicker
+        tags={tags}
+        selectedTagIds={EMPTY_TAG_ID_SET}
+        onAssign={onAssignTag}
+        onCreate={onCreateTag}
+        trigger={
+          <Button variant="outline" size="sm">
+            <PlusIcon /> Add tag
+          </Button>
+        }
+      />
       <Button size="sm" variant="ghost" onClick={onClear}>
         Clear
       </Button>
     </div>
   );
 }
+
+const EMPTY_TAG_ID_SET: ReadonlySet<string> = new Set();
 
 function MerchantHeaderRow({
   row,
@@ -263,13 +281,22 @@ function TransactionRow({
   tx,
   isCursor,
   isSelected,
-  onToggle
+  tags,
+  onToggle,
+  onAssignTag,
+  onRemoveTag,
+  onCreateTag
 }: {
   tx: TransactionWithCategory;
   isCursor: boolean;
   isSelected: boolean;
+  tags: Tag[];
   onToggle: () => void;
+  onAssignTag: (tagId: string) => void;
+  onRemoveTag: (tagId: string) => void;
+  onCreateTag: (name: string, color: string) => Promise<Tag>;
 }) {
+  const rowTagIds = useMemo(() => new Set(tx.tags.map((t) => t.id)), [tx.tags]);
   return (
     <div
       role="option"
@@ -292,10 +319,11 @@ function TransactionRow({
         {tx.type === "DEBIT" ? "-" : "+"}
         {formatCurrency(tx.amount)}
       </span>
-      <span className="hidden sm:block">
+      <span className="hidden min-w-0 items-center gap-1.5 overflow-hidden sm:flex">
         {tx.categoryId != null ? (
           <Badge
             variant="secondary"
+            className="shrink-0"
             style={
               tx.categoryColor
                 ? { backgroundColor: tx.categoryColor, color: getContrastColor(tx.categoryColor) }
@@ -305,8 +333,32 @@ function TransactionRow({
             {tx.categoryName}
           </Badge>
         ) : (
-          <Badge variant="outline">Uncategorized</Badge>
+          <Badge variant="outline" className="shrink-0">
+            Uncategorized
+          </Badge>
         )}
+        <span className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-x-auto">
+          {tx.tags.map((tag) => (
+            <TagPill key={tag.id} tag={tag} onRemove={() => onRemoveTag(tag.id)} />
+          ))}
+        </span>
+        <TagPicker
+          tags={tags}
+          selectedTagIds={rowTagIds}
+          onAssign={onAssignTag}
+          onCreate={onCreateTag}
+          align="end"
+          trigger={
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Add tag"
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            >
+              <PlusIcon />
+            </Button>
+          }
+        />
       </span>
     </div>
   );
@@ -320,7 +372,8 @@ function CategorizePage() {
   const [filters, setFilters] = useState<Filters>({
     month: undefined,
     uncategorizedOnly: false,
-    search: ""
+    search: "",
+    tagId: undefined
   });
   const [expandedMerchants, setExpandedMerchants] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -332,6 +385,11 @@ function CategorizePage() {
   const { data: txResult } = trpc.transactions.list.useQuery({});
   const txData = txResult?.rows ?? [];
   const { data: catData } = trpc.categories.list.useQuery();
+  const { data: tagData } = trpc.tags.list.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
+  const tags = useMemo<Tag[]>(
+    () => (tagData ?? []).map(({ id, name, color, createdAt }) => ({ id, name, color, createdAt })),
+    [tagData]
+  );
   const utils = trpc.useUtils();
 
   const allCategories = useMemo(
@@ -379,6 +437,92 @@ function CategorizePage() {
     }
   });
 
+  const assignTagMutation = trpc.tags.assignToTransactions.useMutation({
+    onMutate: async ({ tagId, transactionIds }) => {
+      await utils.transactions.list.cancel();
+      const snapshot = utils.transactions.list.getData({});
+      const tag = tags.find((t) => t.id === tagId);
+      if (!tag) return { snapshot };
+      const idSet = new Set(transactionIds);
+      utils.transactions.list.setData({}, (old) =>
+        old
+          ? {
+              ...old,
+              rows: old.rows.map((tx) =>
+                idSet.has(tx.id) && !tx.tags.some((t) => t.id === tagId) ? { ...tx, tags: [...tx.tags, tag] } : tx
+              )
+            }
+          : old
+      );
+      return { snapshot };
+    },
+    onError: (_err, _input, ctx) => {
+      utils.transactions.list.setData({}, ctx?.snapshot);
+      toast.error("Failed to add tag");
+    },
+    onSettled: () => {
+      void utils.transactions.list.invalidate();
+    }
+  });
+
+  const removeTagMutation = trpc.tags.removeFromTransactions.useMutation({
+    onMutate: async ({ tagId, transactionIds }) => {
+      await utils.transactions.list.cancel();
+      const snapshot = utils.transactions.list.getData({});
+      const idSet = new Set(transactionIds);
+      utils.transactions.list.setData({}, (old) =>
+        old
+          ? {
+              ...old,
+              rows: old.rows.map((tx) =>
+                idSet.has(tx.id) ? { ...tx, tags: tx.tags.filter((t) => t.id !== tagId) } : tx
+              )
+            }
+          : old
+      );
+      return { snapshot };
+    },
+    onError: (_err, _input, ctx) => {
+      utils.transactions.list.setData({}, ctx?.snapshot);
+      toast.error("Failed to remove tag");
+    },
+    onSettled: () => {
+      void utils.transactions.list.invalidate();
+    }
+  });
+
+  const createTagMutation = trpc.tags.create.useMutation({
+    onSuccess: (created) => {
+      utils.tags.list.setData(undefined, (old) =>
+        old
+          ? old.some((t) => t.id === created.id)
+            ? old
+            : [...old, { ...created, transactionCount: 0 }]
+          : [{ ...created, transactionCount: 0 }]
+      );
+      void utils.tags.list.invalidate();
+    }
+  });
+
+  function handleAssignTagToRow(transactionId: string, tagId: string) {
+    assignTagMutation.mutate({ tagId, transactionIds: [transactionId] });
+  }
+
+  function handleRemoveTagFromRow(transactionId: string, tagId: string) {
+    removeTagMutation.mutate({ tagId, transactionIds: [transactionId] });
+  }
+
+  async function handleCreateTagAndAssign(transactionIds: string[], name: string, color: string): Promise<Tag> {
+    const created = await createTagMutation.mutateAsync({ name, color });
+    assignTagMutation.mutate({ tagId: created.id, transactionIds });
+    return created;
+  }
+
+  function handleBulkAssignTag(tagId: string) {
+    if (selectedIds.size === 0) return;
+    assignTagMutation.mutate({ tagId, transactionIds: [...selectedIds] });
+  }
+
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
     for (const tx of txData) months.add(tx.date.slice(0, 7));
@@ -390,6 +534,7 @@ function CategorizePage() {
       if (filters.month && !tx.date.startsWith(filters.month)) return false;
       if (filters.uncategorizedOnly && tx.categoryId != null) return false;
       if (filters.search && !tx.description.toUpperCase().includes(filters.search.toUpperCase())) return false;
+      if (filters.tagId && !tx.tags.some((t) => t.id === filters.tagId)) return false;
       return true;
     });
 
@@ -532,14 +677,17 @@ function CategorizePage() {
           )}
         </div>
         <ProgressHeader categorized={categorizedCount} total={txData.length} />
-        <FilterBar filters={filters} availableMonths={availableMonths} onChange={setFilters} />
+        <FilterBar filters={filters} availableMonths={availableMonths} tags={tags} onChange={setFilters} />
         {selectedIds.size > 0 && (
           <BulkAssignBar
             selectedCount={selectedIds.size}
             catData={catData}
+            tags={tags}
             value={bulkCategoryId}
             onValueChange={setBulkCategoryId}
             onApply={handleApplyBulk}
+            onAssignTag={handleBulkAssignTag}
+            onCreateTag={(name, color) => handleCreateTagAndAssign([...selectedIds], name, color)}
             onClear={clearSelection}
             isPending={categorizeMutation.isPending}
           />
@@ -552,7 +700,7 @@ function CategorizePage() {
         <span>Description</span>
         <span className="hidden sm:block">Date</span>
         <span className="text-right">Amount</span>
-        <span className="hidden sm:block">Category</span>
+        <span className="hidden sm:block">Category &amp; tags</span>
       </div>
 
       {/* Virtual list */}
@@ -611,7 +759,11 @@ function CategorizePage() {
                       tx={row.tx}
                       isCursor={isCursor}
                       isSelected={selectedIds.has(row.tx.id)}
+                      tags={tags}
                       onToggle={() => toggleSelect(row.tx.id)}
+                      onAssignTag={(tagId) => handleAssignTagToRow(row.tx.id, tagId)}
+                      onRemoveTag={(tagId) => handleRemoveTagFromRow(row.tx.id, tagId)}
+                      onCreateTag={(name, color) => handleCreateTagAndAssign([row.tx.id], name, color)}
                     />
                   )}
                 </div>

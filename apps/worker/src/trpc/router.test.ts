@@ -337,6 +337,46 @@ describe("transactions.list", () => {
     expect(result.rows).toHaveLength(1);
     expect(result.total).toBe(1);
   });
+
+  it("filters to only transactions tagged with tagId", async () => {
+    const db = makeDb();
+    const caller = makeCaller();
+    const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+    await db.insert(transactions).values([tx1, tx2]);
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: [tx1.id] });
+
+    const result = await caller.transactions.list({ tagId: tag.id });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.total).toBe(1);
+    expect(result.rows[0]!.id).toBe(tx1.id);
+    expect(result.rows[0]!.tags).toHaveLength(1);
+    expect(result.rows[0]!.tags[0]!.id).toBe(tag.id);
+  });
+
+  it("AND-composes tagId filter with month filter", async () => {
+    const db = makeDb();
+    const caller = makeCaller();
+    const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
+    await db.insert(transactions).values([tx1, tx2]);
+    // Tag both, but only tx1 is in 2024-01
+    await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: [tx1.id, tx2.id] });
+
+    const result = await caller.transactions.list({ tagId: tag.id, month: "2024-01" });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.total).toBe(1);
+    expect(result.rows[0]!.id).toBe(tx1.id);
+  });
+
+  it("returns empty for unknown tagId", async () => {
+    await makeDb().insert(transactions).values([tx1, tx2]);
+
+    const result = await makeCaller().transactions.list({ tagId: "missing-tag" });
+
+    expect(result.rows).toHaveLength(0);
+    expect(result.total).toBe(0);
+  });
 });
 
 describe("categories.create", () => {

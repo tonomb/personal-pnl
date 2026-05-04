@@ -13,6 +13,8 @@ import { Route as UploadRouteImport } from "./routes/upload";
 import { Route as PnlRouteImport } from "./routes/pnl";
 import { Route as CategorizeRouteImport } from "./routes/categorize";
 import { Route as IndexRouteImport } from "./routes/index";
+import { Route as TagsIndexRouteImport } from "./routes/tags/index";
+import { Route as TagsTagIdRouteImport } from "./routes/tags/$tagId";
 
 const UploadRoute = UploadRouteImport.update({
   id: "/upload",
@@ -34,18 +36,32 @@ const IndexRoute = IndexRouteImport.update({
   path: "/",
   getParentRoute: () => rootRouteImport
 } as any);
+const TagsIndexRoute = TagsIndexRouteImport.update({
+  id: "/tags/",
+  path: "/tags/",
+  getParentRoute: () => rootRouteImport
+} as any);
+const TagsTagIdRoute = TagsTagIdRouteImport.update({
+  id: "/tags/$tagId",
+  path: "/tags/$tagId",
+  getParentRoute: () => rootRouteImport
+} as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
   "/categorize": typeof CategorizeRoute;
   "/pnl": typeof PnlRoute;
   "/upload": typeof UploadRoute;
+  "/tags/$tagId": typeof TagsTagIdRoute;
+  "/tags/": typeof TagsIndexRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
   "/categorize": typeof CategorizeRoute;
   "/pnl": typeof PnlRoute;
   "/upload": typeof UploadRoute;
+  "/tags/$tagId": typeof TagsTagIdRoute;
+  "/tags": typeof TagsIndexRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
@@ -53,13 +69,15 @@ export interface FileRoutesById {
   "/categorize": typeof CategorizeRoute;
   "/pnl": typeof PnlRoute;
   "/upload": typeof UploadRoute;
+  "/tags/$tagId": typeof TagsTagIdRoute;
+  "/tags/": typeof TagsIndexRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/categorize" | "/pnl" | "/upload";
+  fullPaths: "/" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags/";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/categorize" | "/pnl" | "/upload";
-  id: "__root__" | "/" | "/categorize" | "/pnl" | "/upload";
+  to: "/" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags";
+  id: "__root__" | "/" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags/";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
@@ -67,6 +85,8 @@ export interface RootRouteChildren {
   CategorizeRoute: typeof CategorizeRoute;
   PnlRoute: typeof PnlRoute;
   UploadRoute: typeof UploadRoute;
+  TagsTagIdRoute: typeof TagsTagIdRoute;
+  TagsIndexRoute: typeof TagsIndexRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -99,6 +119,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof IndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/tags/": {
+      id: "/tags/";
+      path: "/tags";
+      fullPath: "/tags/";
+      preLoaderRoute: typeof TagsIndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/tags/$tagId": {
+      id: "/tags/$tagId";
+      path: "/tags/$tagId";
+      fullPath: "/tags/$tagId";
+      preLoaderRoute: typeof TagsTagIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
@@ -106,6 +140,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CategorizeRoute: CategorizeRoute,
   PnlRoute: PnlRoute,
-  UploadRoute: UploadRoute
+  UploadRoute: UploadRoute,
+  TagsTagIdRoute: TagsTagIdRoute,
+  TagsIndexRoute: TagsIndexRoute
 };
 export const routeTree = rootRouteImport._addFileChildren(rootRouteChildren)._addFileTypes<FileRouteTypes>();

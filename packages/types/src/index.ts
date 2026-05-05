@@ -12,6 +12,8 @@ export type {
   TransactionRow
 } from "./transactions-query";
 export { getBudgetVariance, getCashflowTrend, getCategoryList, getFinancialHealthSnapshot } from "./advisor-tools";
+export { getTagReportByName, listTagNames } from "./tags";
+export type { TagReportByNameResult } from "./tags";
 export type {
   BudgetVarianceLabel,
   BudgetVarianceResult,

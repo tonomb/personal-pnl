@@ -14,7 +14,9 @@ import {
   getFinancialHealthSnapshot,
   getSavingsRateBenchmark,
   getSpendingByCategory,
+  getTagReportByName,
   getTopMerchants,
+  listTagNames,
   listTransactions,
   mcpBudgetVarianceInputSchema,
   mcpCashflowTrendInputSchema,
@@ -30,6 +32,36 @@ const validator = new CfWorkerJsonSchemaValidator();
 
 function jsonText(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }] };
+}
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December"
+];
+
+function formatDateRange(range: { from: string; to: string } | null): string {
+  if (!range) return "unknown";
+  const f = new Date(range.from + "T00:00:00Z");
+  const t = new Date(range.to + "T00:00:00Z");
+  const fm = MONTH_NAMES[f.getUTCMonth()]!,
+    fd = f.getUTCDate(),
+    fy = f.getUTCFullYear();
+  const tm = MONTH_NAMES[t.getUTCMonth()]!,
+    td = t.getUTCDate(),
+    ty = t.getUTCFullYear();
+  if (fy === ty && fm === tm) return `${fm} ${fd} – ${td}, ${fy}`;
+  if (fy === ty) return `${fm} ${fd} – ${tm} ${td}, ${fy}`;
+  return `${fm} ${fd}, ${fy} – ${tm} ${td}, ${ty}`;
 }
 
 function uncategorizedWarning(count: number, period: string): string | undefined {
@@ -300,6 +332,44 @@ export class PnLMcp extends McpAgent<Env> {
         const db = drizzle(this.env.DB, { schema });
         const result = await getCategoryList(db);
         return jsonText(result);
+      }
+    );
+
+    this.server.registerTool(
+      "get_tag_report",
+      {
+        description:
+          "Get a full spend report for a named tag (e.g. 'New York 2026'). Use this to answer questions " +
+          "about the cost of trips, projects, or events. Supports partial and case-insensitive name matching.",
+        inputSchema: { tag_name: z.string().trim().min(1) }
+      },
+      async ({ tag_name }) => {
+        const db = drizzle(this.env.DB, { schema });
+        const result = await getTagReportByName(db, tag_name);
+
+        if (!result) {
+          const availableTags = await listTagNames(db);
+          return jsonText({
+            error: `No tag matches "${tag_name}". Use one of the available tags or a partial name.`,
+            available_tags: availableTags
+          });
+        }
+
+        const { report, availableTags } = result;
+        return jsonText({
+          matched_tag: report.tag.name,
+          date_range: formatDateRange(report.dateRange),
+          total_spend: report.totalSpend,
+          total_income: report.totalIncome,
+          net: report.net,
+          by_category: report.byCategory.map((c) => ({
+            name: c.categoryName,
+            group: c.groupType,
+            total: c.total
+          })),
+          transaction_count: report.transactions.length,
+          available_tags: availableTags
+        });
       }
     );
   }

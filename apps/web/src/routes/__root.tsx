@@ -36,6 +36,7 @@ function RootLayout() {
           <NavLink to="/upload">Upload</NavLink>
           <NavLink to="/categorize">Categorize</NavLink>
           <NavLink to="/pnl">P&amp;L</NavLink>
+          <NavLink to="/tags">Tags</NavLink>
         </nav>
       </header>
 

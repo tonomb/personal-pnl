@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import * as schema from "@pnl/types";
 import {
+  accounts,
+  cardBenefits,
   categories,
   columnMappings,
   createTagInputSchema,
@@ -31,6 +33,8 @@ beforeEach(async () => {
   await db.delete(transactions);
   await db.delete(columnMappings);
   await db.delete(categories);
+  await db.delete(cardBenefits);
+  await db.delete(accounts);
 });
 
 describe("transactions.getMapping", () => {
@@ -1652,5 +1656,254 @@ describe("transactions.list with tags", () => {
       expect(row.tags).toHaveLength(1);
       expect(row.tags[0]!.name).toBe("Travel");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// accounts
+// ---------------------------------------------------------------------------
+
+const aAccount = {
+  name: "Chase Sapphire",
+  institution: "Chase",
+  type: "CREDIT" as const,
+  last4: "1234",
+  color: "#3b82f6"
+};
+
+describe("accounts.list", () => {
+  it("returns empty array when no accounts exist", async () => {
+    const result = await makeCaller().accounts.list();
+    expect(result).toEqual([]);
+  });
+
+  it("returns created account with empty benefits array", async () => {
+    await makeCaller().accounts.create(aAccount);
+
+    const result = await makeCaller().accounts.list();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.name).toBe("Chase Sapphire");
+    expect(result[0]!.institution).toBe("Chase");
+    expect(result[0]!.type).toBe("CREDIT");
+    expect(result[0]!.last4).toBe("1234");
+    expect(result[0]!.color).toBe("#3b82f6");
+    expect(result[0]!.benefits).toEqual([]);
+  });
+
+  it("returns account with its card benefits", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+    await caller.accounts.addBenefit({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "cashback",
+      rewardRate: 0.03
+    });
+
+    const result = await caller.accounts.list();
+
+    expect(result[0]!.benefits).toHaveLength(1);
+    expect(result[0]!.benefits[0]!.rewardType).toBe("cashback");
+    expect(result[0]!.benefits[0]!.rewardRate).toBe(0.03);
+    expect(result[0]!.benefits[0]!.categoryGroup).toBe("VARIABLE");
+  });
+
+  it("does not mix benefits across accounts", async () => {
+    const caller = makeCaller();
+    const a1 = await caller.accounts.create(aAccount);
+    const a2 = await caller.accounts.create({ ...aAccount, name: "Amex Gold", last4: "5678" });
+    await caller.accounts.addBenefit({
+      accountId: a1.id,
+      categoryGroup: "FIXED",
+      rewardType: "points",
+      rewardRate: 0.02
+    });
+    await caller.accounts.addBenefit({
+      accountId: a2.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "miles",
+      rewardRate: 0.05
+    });
+
+    const result = await caller.accounts.list();
+    const r1 = result.find((a) => a.id === a1.id)!;
+    const r2 = result.find((a) => a.id === a2.id)!;
+
+    expect(r1.benefits).toHaveLength(1);
+    expect(r1.benefits[0]!.rewardType).toBe("points");
+    expect(r2.benefits).toHaveLength(1);
+    expect(r2.benefits[0]!.rewardType).toBe("miles");
+  });
+});
+
+describe("accounts.create", () => {
+  it("creates account with all fields and returns it with a generated id", async () => {
+    const created = await makeCaller().accounts.create(aAccount);
+
+    expect(created.id).toBeTruthy();
+    expect(created.name).toBe("Chase Sapphire");
+    expect(created.type).toBe("CREDIT");
+    expect(created.last4).toBe("1234");
+    expect(created.benefits).toEqual([]);
+  });
+
+  it("creates account with null last4 when omitted", async () => {
+    const { last4: _omit, ...noLast4 } = aAccount;
+    const created = await makeCaller().accounts.create(noLast4);
+
+    expect(created.last4).toBeNull();
+  });
+});
+
+describe("accounts.update", () => {
+  it("updates account fields", async () => {
+    const created = await makeCaller().accounts.create(aAccount);
+
+    const updated = await makeCaller().accounts.update({ id: created.id, name: "Chase Freedom", color: "#ef4444" });
+
+    expect(updated.name).toBe("Chase Freedom");
+    expect(updated.color).toBe("#ef4444");
+    expect(updated.institution).toBe("Chase");
+  });
+
+  it("throws NOT_FOUND when account does not exist", async () => {
+    await expect(makeCaller().accounts.update({ id: "ghost", name: "X" })).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
+  });
+});
+
+describe("accounts.delete", () => {
+  it("removes account and returns deletedId", async () => {
+    const created = await makeCaller().accounts.create(aAccount);
+
+    const result = await makeCaller().accounts.delete({ id: created.id });
+
+    expect(result.deletedId).toBe(created.id);
+    const remaining = await makeCaller().accounts.list();
+    expect(remaining).toHaveLength(0);
+  });
+
+  it("throws NOT_FOUND when account does not exist", async () => {
+    await expect(makeCaller().accounts.delete({ id: "ghost" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("cascades: deletes card benefits when account is deleted", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+    await caller.accounts.addBenefit({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "cashback",
+      rewardRate: 0.03
+    });
+
+    await caller.accounts.delete({ id: account.id });
+
+    const benefits = await makeDb().select().from(cardBenefits);
+    expect(benefits).toHaveLength(0);
+  });
+});
+
+describe("accounts.addBenefit", () => {
+  it("adds a card benefit to an account and returns it with generated id", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+
+    const benefit = await caller.accounts.addBenefit({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "cashback",
+      rewardRate: 0.03
+    });
+
+    expect(benefit.id).toBeTruthy();
+    expect(benefit.accountId).toBe(account.id);
+    expect(benefit.categoryGroup).toBe("VARIABLE");
+    expect(benefit.rewardType).toBe("cashback");
+    expect(benefit.rewardRate).toBe(0.03);
+  });
+});
+
+describe("accounts.updateBenefit", () => {
+  it("updates benefit fields", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+    const benefit = await caller.accounts.addBenefit({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "cashback",
+      rewardRate: 0.03
+    });
+
+    const updated = await caller.accounts.updateBenefit({ id: benefit.id, rewardRate: 0.05, rewardType: "points" });
+
+    expect(updated.rewardRate).toBe(0.05);
+    expect(updated.rewardType).toBe("points");
+    expect(updated.categoryGroup).toBe("VARIABLE");
+  });
+
+  it("throws NOT_FOUND when benefit does not exist", async () => {
+    await expect(makeCaller().accounts.updateBenefit({ id: "ghost" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("accounts.deleteBenefit", () => {
+  it("removes a card benefit and returns deletedId", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+    const benefit = await caller.accounts.addBenefit({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "cashback",
+      rewardRate: 0.03
+    });
+
+    const result = await caller.accounts.deleteBenefit({ id: benefit.id });
+
+    expect(result.deletedId).toBe(benefit.id);
+    const list = await caller.accounts.list();
+    expect(list[0]!.benefits).toHaveLength(0);
+  });
+
+  it("throws NOT_FOUND when benefit does not exist", async () => {
+    await expect(makeCaller().accounts.deleteBenefit({ id: "ghost" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("transactions.upload with accountId", () => {
+  const aMapping = { fileFingerprint: "fp-acc", dateCol: "Date", descriptionCol: "Desc", amountCol: "Amt" };
+  const tx = {
+    id: "tx-acc-1",
+    date: "2024-01-01",
+    description: "Coffee",
+    amount: 4.5,
+    type: "DEBIT" as const,
+    sourceFile: "bank.csv",
+    rawRow: "{}",
+    createdAt: new Date().toISOString()
+  };
+
+  it("stores accountId on uploaded transactions", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+
+    await caller.transactions.upload({
+      transactions: [tx],
+      sourceFile: "bank.csv",
+      mapping: aMapping,
+      accountId: account.id
+    });
+
+    const [stored] = await makeDb().select().from(transactions).where(eq(transactions.id, tx.id));
+    expect(stored!.accountId).toBe(account.id);
+  });
+
+  it("stores null accountId when not provided", async () => {
+    await makeCaller().transactions.upload({ transactions: [tx], sourceFile: "bank.csv", mapping: aMapping });
+
+    const [stored] = await makeDb().select().from(transactions).where(eq(transactions.id, tx.id));
+    expect(stored!.accountId).toBeNull();
   });
 });

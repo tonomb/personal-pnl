@@ -1,10 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import Papa from "papaparse";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AccountSelector } from "@/components/accounts/AccountSelector";
 import { ColumnMapper, type MappingState } from "@/components/upload/ColumnMapper";
 import { DropZone } from "@/components/upload/DropZone";
 import { RawPreviewPanel } from "@/components/upload/RawPreviewPanel";
@@ -56,7 +57,8 @@ const BADGE_VARIANTS: Record<FileStatus["phase"], "default" | "secondary" | "des
 function buildTransactions(
   rawRows: Record<string, string>[],
   mapping: MappingState,
-  sourceFile: string
+  sourceFile: string,
+  accountId: string | null = null
 ): NewTransaction[] {
   const seen = new Set<string>();
   const result: NewTransaction[] = [];
@@ -95,6 +97,7 @@ function buildTransactions(
       description,
       amount,
       type,
+      accountId,
       sourceFile,
       rawRow: JSON.stringify(row),
       createdAt: new Date().toISOString()
@@ -122,8 +125,11 @@ function toDbMapping(mapping: MappingState, fingerprint: string): NewColumnMappi
 function UploadPage() {
   const [fileMap, setFileMap] = useState<Map<string, FileStatus>>(new Map());
   const [sheetPicker, setSheetPicker] = useState<{ file: File; sheetNames: string[] } | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const uploadMutation = trpc.transactions.upload.useMutation();
   const getMappingUtils = trpc.useUtils();
+  const { data: accountsData } = trpc.accounts.list.useQuery();
+  const allAccounts = accountsData ?? [];
 
   function updateFile(name: string, status: FileStatus | undefined) {
     setFileMap((prev) => {
@@ -156,7 +162,7 @@ function UploadPage() {
         creditCol: existing.creditCol ?? undefined,
         useDebitCredit: Boolean(existing.debitCol && existing.creditCol)
       };
-      const txs = buildTransactions(data, syntheticMapping, file.name);
+      const txs = buildTransactions(data, syntheticMapping, file.name, selectedAccountId);
       const dbMapping = toDbMapping(syntheticMapping, fingerprint);
       updateFile(file.name, { phase: "ready", transactions: txs, mapping: dbMapping });
       toast(`Auto-mapped "${file.name}" from previous upload`);
@@ -264,7 +270,7 @@ function UploadPage() {
     const status = fileMap.get(fileName);
     if (status?.phase !== "mapping") return;
 
-    const txs = buildTransactions(status.rawRows, mapping, fileName);
+    const txs = buildTransactions(status.rawRows, mapping, fileName, selectedAccountId);
     const dbMapping = toDbMapping(mapping, status.fingerprint);
     updateFile(fileName, { phase: "ready", transactions: txs, mapping: dbMapping });
   }
@@ -277,7 +283,8 @@ function UploadPage() {
         const result = await uploadMutation.mutateAsync({
           transactions: status.transactions,
           sourceFile: fileName,
-          mapping: status.mapping
+          mapping: status.mapping,
+          accountId: selectedAccountId
         });
         updateFile(fileName, {
           phase: "done",
@@ -302,7 +309,21 @@ function UploadPage() {
         <p className="text-muted-foreground">Upload one or more bank statement CSV or XLSX files.</p>
       </div>
 
-      <DropZone onFiles={handleFiles} />
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Account</label>
+        {allAccounts.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            No accounts configured.{" "}
+            <Link to="/accounts" className="underline hover:text-foreground">
+              Add one first →
+            </Link>
+          </p>
+        ) : (
+          <AccountSelector value={selectedAccountId} onChange={setSelectedAccountId} accounts={allAccounts} />
+        )}
+      </div>
+
+      <DropZone onFiles={handleFiles} disabled={!selectedAccountId} />
 
       {sheetPicker && (
         <SheetSelector

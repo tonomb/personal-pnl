@@ -24,6 +24,7 @@ export type {
   FinancialHealthSnapshot
 } from "./advisor-tools";
 export type {
+  AccountWithBenefits,
   AppRouter,
   CategoryTotal,
   GroupedTransaction,

@@ -1,6 +1,17 @@
 import { initTRPC } from "@trpc/server";
 
-import type { Category, ColumnMapping, NewColumnMapping, NewTransaction, Tag, Transaction } from "./schema";
+import type {
+  Account,
+  CardBenefit,
+  Category,
+  ColumnMapping,
+  NewColumnMapping,
+  NewTransaction,
+  Tag,
+  Transaction
+} from "./schema";
+
+export type AccountWithBenefits = Account & { benefits: CardBenefit[] };
 
 export type TransactionWithCategory = Transaction & {
   categoryName: string | null;
@@ -179,9 +190,38 @@ export const appRouter = router({
             transactions: NewTransaction[];
             sourceFile: string;
             mapping: NewColumnMapping;
+            accountId?: string | null;
           }
       )
       .mutation((): { inserted: number; duplicates: number } => ({ inserted: 0, duplicates: 0 }))
+  }),
+  accounts: router({
+    list: publicProcedure
+      .input((v: unknown) => v as void)
+      .query((): AccountWithBenefits[] => null as unknown as AccountWithBenefits[]),
+    create: publicProcedure
+      .input(
+        (v: unknown) => v as { name: string; institution: string; type: string; last4?: string | null; color?: string }
+      )
+      .mutation((): AccountWithBenefits => null as unknown as AccountWithBenefits),
+    update: publicProcedure
+      .input(
+        (v: unknown) =>
+          v as { id: string; name?: string; institution?: string; type?: string; last4?: string | null; color?: string }
+      )
+      .mutation((): Account => null as unknown as Account),
+    delete: publicProcedure
+      .input((v: unknown) => v as { id: string })
+      .mutation((): { deletedId: string } => ({ deletedId: "" })),
+    addBenefit: publicProcedure
+      .input((v: unknown) => v as { accountId: string; categoryGroup: string; rewardType: string; rewardRate: number })
+      .mutation((): CardBenefit => null as unknown as CardBenefit),
+    updateBenefit: publicProcedure
+      .input((v: unknown) => v as { id: string; categoryGroup?: string; rewardType?: string; rewardRate?: number })
+      .mutation((): CardBenefit => null as unknown as CardBenefit),
+    deleteBenefit: publicProcedure
+      .input((v: unknown) => v as { id: string })
+      .mutation((): { deletedId: string } => ({ deletedId: "" }))
   }),
   pnl: router({
     getReport: publicProcedure

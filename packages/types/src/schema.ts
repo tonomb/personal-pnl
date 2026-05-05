@@ -6,6 +6,31 @@ import { z } from "zod";
 // Tables
 // ---------------------------------------------------------------------------
 
+export const accounts = sqliteTable("accounts", {
+  id: text("id").primaryKey(), // UUID
+  name: text("name").notNull(),
+  institution: text("institution").notNull(),
+  type: text("type", { enum: ["CHECKING", "SAVINGS", "CREDIT"] }).notNull(),
+  last4: text("last4"),
+  color: text("color").notNull().default("#3b82f6"),
+  createdAt: text("created_at")
+    .$defaultFn(() => new Date().toISOString())
+    .notNull()
+});
+
+export const cardBenefits = sqliteTable("card_benefits", {
+  id: text("id").primaryKey(), // UUID
+  accountId: text("account_id")
+    .notNull()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  categoryGroup: text("category_group", { enum: ["INCOME", "FIXED", "VARIABLE", "IGNORED"] }).notNull(),
+  rewardType: text("reward_type").notNull(),
+  rewardRate: real("reward_rate").notNull(), // stored as decimal: 0.03 = 3%
+  createdAt: text("created_at")
+    .$defaultFn(() => new Date().toISOString())
+    .notNull()
+});
+
 export const categories = sqliteTable("categories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -22,6 +47,7 @@ export const transactions = sqliteTable("transactions", {
   amount: real("amount").notNull(), // always positive
   type: text("type", { enum: ["DEBIT", "CREDIT"] }).notNull(),
   categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+  accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
   sourceFile: text("source_file"),
   rawRow: text("raw_row"), // JSON text
   createdAt: text("created_at")
@@ -64,6 +90,61 @@ export const columnMappings = sqliteTable("column_mappings", {
 // ---------------------------------------------------------------------------
 // Zod schemas (derived from Drizzle)
 // ---------------------------------------------------------------------------
+
+export const insertAccountSchema = createInsertSchema(accounts);
+export const selectAccountSchema = createSelectSchema(accounts);
+
+export const createAccountInputSchema = z.object({
+  name: z.string().trim().min(1, "Name required"),
+  institution: z.string().trim().min(1, "Institution required"),
+  type: z.enum(["CHECKING", "SAVINGS", "CREDIT"]),
+  last4: z
+    .string()
+    .regex(/^\d{4}$/, "Must be 4 digits")
+    .nullable()
+    .optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Color must be #RRGGBB hex")
+    .default("#3b82f6")
+});
+
+export const updateAccountInputSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).optional(),
+  institution: z.string().trim().min(1).optional(),
+  type: z.enum(["CHECKING", "SAVINGS", "CREDIT"]).optional(),
+  last4: z
+    .string()
+    .regex(/^\d{4}$/)
+    .nullable()
+    .optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional()
+});
+
+export const deleteAccountInputSchema = z.object({ id: z.string().min(1) });
+
+export const insertCardBenefitSchema = createInsertSchema(cardBenefits);
+export const selectCardBenefitSchema = createSelectSchema(cardBenefits);
+
+export const createCardBenefitInputSchema = z.object({
+  accountId: z.string().min(1),
+  categoryGroup: z.enum(["INCOME", "FIXED", "VARIABLE", "IGNORED"]),
+  rewardType: z.string().trim().min(1, "Reward type required"),
+  rewardRate: z.number().min(0).max(1) // stored as decimal: 0.03 = 3%
+});
+
+export const updateCardBenefitInputSchema = z.object({
+  id: z.string().min(1),
+  categoryGroup: z.enum(["INCOME", "FIXED", "VARIABLE", "IGNORED"]).optional(),
+  rewardType: z.string().trim().min(1).optional(),
+  rewardRate: z.number().min(0).max(1).optional()
+});
+
+export const deleteCardBenefitInputSchema = z.object({ id: z.string().min(1) });
 
 export const insertCategorySchema = createInsertSchema(categories);
 export const selectCategorySchema = createSelectSchema(categories);
@@ -193,6 +274,12 @@ export const pnlGetKpisInputSchema = z.object({
 // ---------------------------------------------------------------------------
 // TypeScript types (inferred from Drizzle)
 // ---------------------------------------------------------------------------
+
+export type Account = typeof accounts.$inferSelect;
+export type NewAccount = typeof accounts.$inferInsert;
+
+export type CardBenefit = typeof cardBenefits.$inferSelect;
+export type NewCardBenefit = typeof cardBenefits.$inferInsert;
 
 export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;

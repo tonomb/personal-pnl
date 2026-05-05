@@ -5,17 +5,30 @@ import { WorkersLogger } from "workers-tagged-logger";
 import { z } from "zod";
 
 import { add, subtract, toStorable } from "@pnl/money";
-import type { KpiSummary, Tag, TagReport, TagReportCategoryBreakdown, TagReportTransaction } from "@pnl/types";
+import type {
+  CardBenefit,
+  KpiSummary,
+  Tag,
+  TagReport,
+  TagReportCategoryBreakdown,
+  TagReportTransaction
+} from "@pnl/types";
 import {
+  accounts,
   assignTagInputSchema,
   buildMonthlyPnL,
+  cardBenefits,
   categories,
   categorizeInputSchema,
   columnMappings,
   computeMonthlyPnl,
   computePnlReport,
+  createAccountInputSchema,
+  createCardBenefitInputSchema,
   createCategoryInputSchema,
   createTagInputSchema,
+  deleteAccountInputSchema,
+  deleteCardBenefitInputSchema,
   deleteCategoryInputSchema,
   deleteTagInputSchema,
   getSavingsRateBenchmark,
@@ -32,6 +45,8 @@ import {
   transactionListInputSchema,
   transactions,
   transactionTags,
+  updateAccountInputSchema,
+  updateCardBenefitInputSchema,
   updateCategoryInputSchema
 } from "@pnl/types";
 
@@ -61,6 +76,7 @@ async function buildTagReport(db: TRPCContext["db"], tag: Tag): Promise<TagRepor
       amount: transactions.amount,
       type: transactions.type,
       categoryId: transactions.categoryId,
+      accountId: transactions.accountId,
       sourceFile: transactions.sourceFile,
       rawRow: transactions.rawRow,
       createdAt: transactions.createdAt,
@@ -165,6 +181,82 @@ async function buildTagReport(db: TRPCContext["db"], tag: Tag): Promise<TagRepor
 export const appRouter = router({
   health: router({
     ping: publicProcedure.query(() => ({ pong: true }))
+  }),
+
+  accounts: router({
+    list: publicProcedure.query(async ({ ctx }) => {
+      const accs = await ctx.db.select().from(accounts).orderBy(accounts.createdAt);
+      if (accs.length === 0) return [];
+      const benefits = await ctx.db
+        .select()
+        .from(cardBenefits)
+        .where(
+          inArray(
+            cardBenefits.accountId,
+            accs.map((a) => a.id)
+          )
+        );
+      const benefitsByAccount = new Map<string, CardBenefit[]>();
+      for (const b of benefits) {
+        const list = benefitsByAccount.get(b.accountId) ?? [];
+        list.push(b);
+        benefitsByAccount.set(b.accountId, list);
+      }
+      return accs.map((a) => ({ ...a, benefits: benefitsByAccount.get(a.id) ?? [] }));
+    }),
+
+    create: publicProcedure.input(createAccountInputSchema).mutation(async ({ input, ctx }) => {
+      const id = crypto.randomUUID();
+      const [created] = await ctx.db
+        .insert(accounts)
+        .values({ id, ...input })
+        .returning();
+      return { ...created!, benefits: [] };
+    }),
+
+    update: publicProcedure.input(updateAccountInputSchema).mutation(async ({ input, ctx }) => {
+      const { id, ...patch } = input;
+      const [updated] = await ctx.db.update(accounts).set(patch).where(eq(accounts.id, id)).returning();
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: `Account ${id} not found` });
+      return updated;
+    }),
+
+    delete: publicProcedure.input(deleteAccountInputSchema).mutation(async ({ input, ctx }) => {
+      const [deleted] = await ctx.db.delete(accounts).where(eq(accounts.id, input.id)).returning({ id: accounts.id });
+      if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: `Account ${input.id} not found` });
+      return { deletedId: deleted.id };
+    }),
+
+    addBenefit: publicProcedure.input(createCardBenefitInputSchema).mutation(async ({ input, ctx }) => {
+      const id = crypto.randomUUID();
+      const [created] = await ctx.db
+        .insert(cardBenefits)
+        .values({ id, ...input })
+        .returning();
+      return created!;
+    }),
+
+    updateBenefit: publicProcedure.input(updateCardBenefitInputSchema).mutation(async ({ input, ctx }) => {
+      const { id, ...patch } = input;
+      const filtered = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+      if (Object.keys(filtered).length === 0) {
+        const [existing] = await ctx.db.select().from(cardBenefits).where(eq(cardBenefits.id, id)).limit(1);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: `Card benefit ${id} not found` });
+        return existing;
+      }
+      const [updated] = await ctx.db.update(cardBenefits).set(filtered).where(eq(cardBenefits.id, id)).returning();
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: `Card benefit ${id} not found` });
+      return updated;
+    }),
+
+    deleteBenefit: publicProcedure.input(deleteCardBenefitInputSchema).mutation(async ({ input, ctx }) => {
+      const [deleted] = await ctx.db
+        .delete(cardBenefits)
+        .where(eq(cardBenefits.id, input.id))
+        .returning({ id: cardBenefits.id });
+      if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: `Card benefit ${input.id} not found` });
+      return { deletedId: deleted.id };
+    })
   }),
 
   categories: router({
@@ -513,7 +605,8 @@ export const appRouter = router({
         z.object({
           transactions: z.array(transactionInputSchema),
           sourceFile: z.string(),
-          mapping: insertColumnMappingSchema
+          mapping: insertColumnMappingSchema,
+          accountId: z.string().nullable().optional()
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -562,14 +655,16 @@ export const appRouter = router({
           for (const rows of dedupeResults) {
             for (const row of rows) existingIds.add(row.id);
           }
-          const newTransactions = input.transactions.filter((tx) => !existingIds.has(tx.id));
+          const newTransactions = input.transactions
+            .filter((tx) => !existingIds.has(tx.id))
+            .map((tx) => ({ ...tx, accountId: input.accountId ?? null }));
           event.duplicates = existingIds.size;
           event.newCount = newTransactions.length;
 
           // D1 allows max 100 bound parameters per statement.
-          // This INSERT has 9 params per row — use 10 rows/stmt for headroom.
-          // Group up to 100 statements per db.batch() call = 1,000 rows per roundtrip.
-          const insertChunks = chunks(newTransactions, 10);
+          // This INSERT has 10 params per row — use 9 rows/stmt for headroom.
+          // Group up to 100 statements per db.batch() call = 900 rows per roundtrip.
+          const insertChunks = chunks(newTransactions, 9);
           event.chunkCount = insertChunks.length;
           event.chunkSizes = insertChunks.map((c) => c.length);
 

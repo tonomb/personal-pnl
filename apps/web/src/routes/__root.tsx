@@ -37,6 +37,7 @@ function RootLayout() {
           <NavLink to="/categorize">Categorize</NavLink>
           <NavLink to="/pnl">P&amp;L</NavLink>
           <NavLink to="/tags">Tags</NavLink>
+          <NavLink to="/accounts">Accounts</NavLink>
         </nav>
       </header>
 

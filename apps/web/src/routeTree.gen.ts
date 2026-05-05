@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root";
+import { Route as AccountsRouteImport } from "./routes/accounts";
 import { Route as UploadRouteImport } from "./routes/upload";
 import { Route as PnlRouteImport } from "./routes/pnl";
 import { Route as CategorizeRouteImport } from "./routes/categorize";
@@ -16,6 +17,11 @@ import { Route as IndexRouteImport } from "./routes/index";
 import { Route as TagsIndexRouteImport } from "./routes/tags/index";
 import { Route as TagsTagIdRouteImport } from "./routes/tags/$tagId";
 
+const AccountsRoute = AccountsRouteImport.update({
+  id: "/accounts",
+  path: "/accounts",
+  getParentRoute: () => rootRouteImport
+} as any);
 const UploadRoute = UploadRouteImport.update({
   id: "/upload",
   path: "/upload",
@@ -49,6 +55,7 @@ const TagsTagIdRoute = TagsTagIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
+  "/accounts": typeof AccountsRoute;
   "/categorize": typeof CategorizeRoute;
   "/pnl": typeof PnlRoute;
   "/upload": typeof UploadRoute;
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
+  "/accounts": typeof AccountsRoute;
   "/categorize": typeof CategorizeRoute;
   "/pnl": typeof PnlRoute;
   "/upload": typeof UploadRoute;
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
+  "/accounts": typeof AccountsRoute;
   "/categorize": typeof CategorizeRoute;
   "/pnl": typeof PnlRoute;
   "/upload": typeof UploadRoute;
@@ -74,14 +83,15 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags/";
+  fullPaths: "/" | "/accounts" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags/";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags";
-  id: "__root__" | "/" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags/";
+  to: "/" | "/accounts" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags";
+  id: "__root__" | "/" | "/accounts" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags/";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
+  AccountsRoute: typeof AccountsRoute;
   CategorizeRoute: typeof CategorizeRoute;
   PnlRoute: typeof PnlRoute;
   UploadRoute: typeof UploadRoute;
@@ -126,6 +136,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof TagsIndexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/accounts": {
+      id: "/accounts";
+      path: "/accounts";
+      fullPath: "/accounts";
+      preLoaderRoute: typeof AccountsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/tags/$tagId": {
       id: "/tags/$tagId";
       path: "/tags/$tagId";
@@ -138,6 +155,7 @@ declare module "@tanstack/react-router" {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountsRoute: AccountsRoute,
   CategorizeRoute: CategorizeRoute,
   PnlRoute: PnlRoute,
   UploadRoute: UploadRoute,

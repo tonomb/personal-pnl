@@ -26,6 +26,9 @@ function makeCaller() {
   return appRouter.createCaller({ db: makeDb() }, { onError: () => {} });
 }
 
+// Stable account ID used across all test transaction fixtures.
+const TEST_ACCOUNT_ID = "test-account-00000000-0000-0000-0000";
+
 beforeEach(async () => {
   const db = makeDb();
   await db.delete(transactionTags);
@@ -35,6 +38,15 @@ beforeEach(async () => {
   await db.delete(categories);
   await db.delete(cardBenefits);
   await db.delete(accounts);
+  // Seed the default test account so transaction inserts satisfy the NOT NULL FK.
+  await db.insert(accounts).values({
+    id: TEST_ACCOUNT_ID,
+    name: "Test Bank",
+    institution: "Test Bank",
+    type: "CHECKING",
+    color: "#3b82f6",
+    createdAt: new Date().toISOString()
+  });
 });
 
 describe("transactions.getMapping", () => {
@@ -93,7 +105,8 @@ describe("transactions.upload", () => {
     const result = await makeCaller().transactions.upload({
       transactions: [tx1, tx2],
       sourceFile: "bank.csv",
-      mapping: aMapping
+      mapping: aMapping,
+      accountId: TEST_ACCOUNT_ID
     });
 
     expect(result).toEqual({ inserted: 2, duplicates: 0, total: 2 });
@@ -104,13 +117,15 @@ describe("transactions.upload", () => {
     await caller.transactions.upload({
       transactions: [tx1, tx2],
       sourceFile: "bank.csv",
-      mapping: aMapping
+      mapping: aMapping,
+      accountId: TEST_ACCOUNT_ID
     });
 
     const result = await caller.transactions.upload({
       transactions: [tx1, tx2],
       sourceFile: "bank.csv",
-      mapping: aMapping
+      mapping: aMapping,
+      accountId: TEST_ACCOUNT_ID
     });
 
     expect(result).toEqual({ inserted: 0, duplicates: 2, total: 2 });
@@ -121,13 +136,15 @@ describe("transactions.upload", () => {
     await caller.transactions.upload({
       transactions: [],
       sourceFile: "bank.csv",
-      mapping: { ...aMapping, amountCol: "Amount" }
+      mapping: { ...aMapping, amountCol: "Amount" },
+      accountId: TEST_ACCOUNT_ID
     });
 
     await caller.transactions.upload({
       transactions: [],
       sourceFile: "bank.csv",
-      mapping: { ...aMapping, amountCol: "Monto" }
+      mapping: { ...aMapping, amountCol: "Monto" },
+      accountId: TEST_ACCOUNT_ID
     });
 
     const saved = await caller.transactions.getMapping({ fingerprint: "bank-fp" });
@@ -173,6 +190,7 @@ describe("transactions.categorize", () => {
     description: "Coffee",
     amount: 4.5,
     type: "DEBIT" as const,
+    accountId: TEST_ACCOUNT_ID,
     sourceFile: "bank.csv",
     rawRow: "{}",
     createdAt: new Date().toISOString()
@@ -221,6 +239,7 @@ describe("transactions.list", () => {
     description: "Coffee",
     amount: 4.5,
     type: "DEBIT" as const,
+    accountId: TEST_ACCOUNT_ID,
     sourceFile: "bank.csv",
     rawRow: "{}",
     createdAt: new Date().toISOString()
@@ -231,6 +250,7 @@ describe("transactions.list", () => {
     description: "Salary",
     amount: 1000,
     type: "CREDIT" as const,
+    accountId: TEST_ACCOUNT_ID,
     sourceFile: "bank.csv",
     rawRow: "{}",
     createdAt: new Date().toISOString()
@@ -316,6 +336,7 @@ describe("transactions.list", () => {
       description: `d${i}`,
       amount: 1 + i,
       type: "DEBIT" as const,
+      accountId: TEST_ACCOUNT_ID,
       sourceFile: "bank.csv",
       rawRow: "{}",
       createdAt: new Date().toISOString()
@@ -457,6 +478,7 @@ describe("categories.delete", () => {
       description: "x",
       amount: 1,
       type: "DEBIT",
+      accountId: TEST_ACCOUNT_ID,
       sourceFile: "bank.csv",
       rawRow: "{}",
       createdAt: new Date().toISOString(),
@@ -484,6 +506,7 @@ describe("transactions.grouped", () => {
     description: "Uber",
     amount: 10,
     type: "DEBIT" as const,
+    accountId: TEST_ACCOUNT_ID,
     sourceFile: "bank.csv",
     rawRow: "{}",
     createdAt: new Date().toISOString(),
@@ -648,6 +671,7 @@ function makePnlTx(overrides: {
 }) {
   return {
     description: "tx",
+    accountId: TEST_ACCOUNT_ID,
     sourceFile: "bank.csv",
     rawRow: "{}",
     createdAt: new Date().toISOString(),
@@ -1088,9 +1112,9 @@ describe("tags.list", () => {
     const work = await caller.tags.create({ name: "Work", color: "#F59E0B" });
 
     await db.insert(transactions).values([
-      { id: "tx-1", date: "2024-01-01", description: "A", amount: 1, type: "DEBIT" },
-      { id: "tx-2", date: "2024-01-02", description: "B", amount: 2, type: "DEBIT" },
-      { id: "tx-3", date: "2024-01-03", description: "C", amount: 3, type: "DEBIT" }
+      { id: "tx-1", date: "2024-01-01", description: "A", amount: 1, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
+      { id: "tx-2", date: "2024-01-02", description: "B", amount: 2, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
+      { id: "tx-3", date: "2024-01-03", description: "C", amount: 3, type: "DEBIT", accountId: TEST_ACCOUNT_ID }
     ]);
     await db.insert(transactionTags).values([
       { transactionId: "tx-1", tagId: travel.id },
@@ -1169,9 +1193,14 @@ describe("tags.delete", () => {
     const db = makeDb();
     const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
 
-    await db
-      .insert(transactions)
-      .values({ id: "tx-cascade-1", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await db.insert(transactions).values({
+      id: "tx-cascade-1",
+      date: "2024-01-01",
+      description: "x",
+      amount: 1,
+      type: "DEBIT",
+      accountId: TEST_ACCOUNT_ID
+    });
     await db.insert(transactionTags).values({ transactionId: "tx-cascade-1", tagId: tag.id });
 
     await caller.tags.delete({ id: tag.id });
@@ -1188,8 +1217,8 @@ describe("tags.assignToTransactions", () => {
     const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
 
     await db.insert(transactions).values([
-      { id: "tx-a", date: "2024-01-01", description: "a", amount: 1, type: "DEBIT" },
-      { id: "tx-b", date: "2024-01-02", description: "b", amount: 2, type: "DEBIT" }
+      { id: "tx-a", date: "2024-01-01", description: "a", amount: 1, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
+      { id: "tx-b", date: "2024-01-02", description: "b", amount: 2, type: "DEBIT", accountId: TEST_ACCOUNT_ID }
     ]);
 
     const result = await caller.tags.assignToTransactions({
@@ -1207,9 +1236,14 @@ describe("tags.assignToTransactions", () => {
     const db = makeDb();
     const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
 
-    await db
-      .insert(transactions)
-      .values({ id: "tx-idem", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await db.insert(transactions).values({
+      id: "tx-idem",
+      date: "2024-01-01",
+      description: "x",
+      amount: 1,
+      type: "DEBIT",
+      accountId: TEST_ACCOUNT_ID
+    });
 
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["tx-idem"] });
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["tx-idem"] });
@@ -1220,9 +1254,14 @@ describe("tags.assignToTransactions", () => {
 
   it("throws NOT_FOUND when tagId does not exist", async () => {
     const db = makeDb();
-    await db
-      .insert(transactions)
-      .values({ id: "tx-x", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await db.insert(transactions).values({
+      id: "tx-x",
+      date: "2024-01-01",
+      description: "x",
+      amount: 1,
+      type: "DEBIT",
+      accountId: TEST_ACCOUNT_ID
+    });
 
     await expect(
       makeCaller().tags.assignToTransactions({ tagId: "missing-tag", transactionIds: ["tx-x"] })
@@ -1239,7 +1278,8 @@ describe("tags.assignToTransactions", () => {
       date: "2024-01-01",
       description: `bulk-${i}`,
       amount: 1,
-      type: "DEBIT" as const
+      type: "DEBIT" as const,
+      accountId: TEST_ACCOUNT_ID
     }));
     // Insert transactions in chunks of 10 to respect the same D1 param limits
     for (let i = 0; i < txValues.length; i += 10) {
@@ -1264,8 +1304,8 @@ describe("tags.removeFromTransactions", () => {
     const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
 
     await db.insert(transactions).values([
-      { id: "tx-r1", date: "2024-01-01", description: "a", amount: 1, type: "DEBIT" },
-      { id: "tx-r2", date: "2024-01-02", description: "b", amount: 2, type: "DEBIT" }
+      { id: "tx-r1", date: "2024-01-01", description: "a", amount: 1, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
+      { id: "tx-r2", date: "2024-01-02", description: "b", amount: 2, type: "DEBIT", accountId: TEST_ACCOUNT_ID }
     ]);
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["tx-r1", "tx-r2"] });
 
@@ -1280,9 +1320,14 @@ describe("tags.removeFromTransactions", () => {
     const caller = makeCaller();
     const db = makeDb();
     const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
-    await db
-      .insert(transactions)
-      .values({ id: "tx-noop", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await db.insert(transactions).values({
+      id: "tx-noop",
+      date: "2024-01-01",
+      description: "x",
+      amount: 1,
+      type: "DEBIT",
+      accountId: TEST_ACCOUNT_ID
+    });
 
     const result = await caller.tags.removeFromTransactions({ tagId: tag.id, transactionIds: ["tx-noop"] });
     expect(result.removed).toBe(1);
@@ -1294,9 +1339,14 @@ describe("tags.removeFromTransactions", () => {
     const travel = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
     const food = await caller.tags.create({ name: "Food", color: "#10B981" });
 
-    await db
-      .insert(transactions)
-      .values({ id: "tx-multi", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await db.insert(transactions).values({
+      id: "tx-multi",
+      date: "2024-01-01",
+      description: "x",
+      amount: 1,
+      type: "DEBIT",
+      accountId: TEST_ACCOUNT_ID
+    });
     await caller.tags.assignToTransactions({ tagId: travel.id, transactionIds: ["tx-multi"] });
     await caller.tags.assignToTransactions({ tagId: food.id, transactionIds: ["tx-multi"] });
 
@@ -1316,7 +1366,8 @@ describe("tags.removeFromTransactions", () => {
       date: "2024-01-01",
       description: `bulk-${i}`,
       amount: 1,
-      type: "DEBIT" as const
+      type: "DEBIT" as const,
+      accountId: TEST_ACCOUNT_ID
     }));
     for (let i = 0; i < txValues.length; i += 10) {
       await db.insert(transactions).values(txValues.slice(i, i + 10));
@@ -1367,12 +1418,44 @@ describe("tags.getReport", () => {
 
     await db.insert(transactions).values([
       // Income: refund as CREDIT in INCOME
-      { id: "ny-1", date: "2024-03-04", description: "Refund", amount: 50, type: "CREDIT", categoryId: salary!.id },
+      {
+        id: "ny-1",
+        date: "2024-03-04",
+        description: "Refund",
+        amount: 50,
+        type: "CREDIT",
+        categoryId: salary!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
       // Fixed expense: hotel
-      { id: "ny-2", date: "2024-03-05", description: "Hotel", amount: 600, type: "DEBIT", categoryId: hotel!.id },
+      {
+        id: "ny-2",
+        date: "2024-03-05",
+        description: "Hotel",
+        amount: 600,
+        type: "DEBIT",
+        categoryId: hotel!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
       // Variable expense: dinner x 2
-      { id: "ny-3", date: "2024-03-06", description: "Dinner", amount: 80, type: "DEBIT", categoryId: food!.id },
-      { id: "ny-4", date: "2024-03-07", description: "Lunch", amount: 40, type: "DEBIT", categoryId: food!.id }
+      {
+        id: "ny-3",
+        date: "2024-03-06",
+        description: "Dinner",
+        amount: 80,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "ny-4",
+        date: "2024-03-07",
+        description: "Lunch",
+        amount: 40,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await caller.tags.assignToTransactions({
       tagId: tag.id,
@@ -1413,8 +1496,24 @@ describe("tags.getReport", () => {
     const [transfer] = await db.insert(categories).values({ name: "Transfer", groupType: "IGNORED" }).returning();
 
     await db.insert(transactions).values([
-      { id: "ig-1", date: "2024-03-05", description: "Dinner", amount: 80, type: "DEBIT", categoryId: food!.id },
-      { id: "ig-2", date: "2024-03-06", description: "Transfer", amount: 500, type: "DEBIT", categoryId: transfer!.id }
+      {
+        id: "ig-1",
+        date: "2024-03-05",
+        description: "Dinner",
+        amount: 80,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "ig-2",
+        date: "2024-03-06",
+        description: "Transfer",
+        amount: 500,
+        type: "DEBIT",
+        categoryId: transfer!.id,
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["ig-1", "ig-2"] });
 
@@ -1432,8 +1531,24 @@ describe("tags.getReport", () => {
     const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
 
     await db.insert(transactions).values([
-      { id: "u-1", date: "2024-03-05", description: "Dinner", amount: 80, type: "DEBIT", categoryId: food!.id },
-      { id: "u-2", date: "2024-03-06", description: "Mystery", amount: 30, type: "DEBIT", categoryId: null }
+      {
+        id: "u-1",
+        date: "2024-03-05",
+        description: "Dinner",
+        amount: 80,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "u-2",
+        date: "2024-03-06",
+        description: "Mystery",
+        amount: 30,
+        type: "DEBIT",
+        categoryId: null,
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["u-1", "u-2"] });
 
@@ -1451,8 +1566,24 @@ describe("tags.getReport", () => {
     const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
 
     await db.insert(transactions).values([
-      { id: "iso-1", date: "2024-03-05", description: "NY Dinner", amount: 80, type: "DEBIT", categoryId: food!.id },
-      { id: "iso-2", date: "2024-03-06", description: "Work Lunch", amount: 30, type: "DEBIT", categoryId: food!.id }
+      {
+        id: "iso-1",
+        date: "2024-03-05",
+        description: "NY Dinner",
+        amount: 80,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "iso-2",
+        date: "2024-03-06",
+        description: "Work Lunch",
+        amount: 30,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await caller.tags.assignToTransactions({ tagId: ny.id, transactionIds: ["iso-1"] });
     await caller.tags.assignToTransactions({ tagId: work.id, transactionIds: ["iso-2"] });
@@ -1476,7 +1607,8 @@ describe("tags.getReport", () => {
       description: "Dinner",
       amount: 50,
       type: "DEBIT",
-      categoryId: foodCat!.id
+      categoryId: foodCat!.id,
+      accountId: TEST_ACCOUNT_ID
     });
     await caller.tags.assignToTransactions({ tagId: ny.id, transactionIds: ["tx-multi"] });
     await caller.tags.assignToTransactions({ tagId: food.id, transactionIds: ["tx-multi"] });
@@ -1496,9 +1628,33 @@ describe("tags.getReport", () => {
     const [ignored] = await db.insert(categories).values({ name: "Transfer", groupType: "IGNORED" }).returning();
 
     await db.insert(transactions).values([
-      { id: "d-1", date: "2024-03-09", description: "Late", amount: 10, type: "DEBIT", categoryId: food!.id },
-      { id: "d-2", date: "2024-03-03", description: "Early", amount: 10, type: "DEBIT", categoryId: food!.id },
-      { id: "d-3", date: "2024-03-06", description: "Middle", amount: 10, type: "DEBIT", categoryId: ignored!.id }
+      {
+        id: "d-1",
+        date: "2024-03-09",
+        description: "Late",
+        amount: 10,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "d-2",
+        date: "2024-03-03",
+        description: "Early",
+        amount: 10,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "d-3",
+        date: "2024-03-06",
+        description: "Middle",
+        amount: 10,
+        type: "DEBIT",
+        categoryId: ignored!.id,
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["d-1", "d-2", "d-3"] });
 
@@ -1514,8 +1670,24 @@ describe("tags.getReport", () => {
     const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
 
     await db.insert(transactions).values([
-      { id: "fp-1", date: "2024-03-05", description: "a", amount: 0.1, type: "DEBIT", categoryId: food!.id },
-      { id: "fp-2", date: "2024-03-06", description: "b", amount: 0.2, type: "DEBIT", categoryId: food!.id }
+      {
+        id: "fp-1",
+        date: "2024-03-05",
+        description: "a",
+        amount: 0.1,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "fp-2",
+        date: "2024-03-06",
+        description: "b",
+        amount: 0.2,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["fp-1", "fp-2"] });
 
@@ -1538,7 +1710,8 @@ describe("tags.getReportByName", () => {
       description: "Dinner",
       amount: 50,
       type: "DEBIT",
-      categoryId: food!.id
+      categoryId: food!.id,
+      accountId: TEST_ACCOUNT_ID
     });
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["n-1"] });
 
@@ -1581,9 +1754,14 @@ describe("tags.getReportByName", () => {
 
 describe("transactions.list with tags", () => {
   it("returns tags: [] for transactions with no tags", async () => {
-    await makeDb()
-      .insert(transactions)
-      .values({ id: "tx-untagged", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await makeDb().insert(transactions).values({
+      id: "tx-untagged",
+      date: "2024-01-01",
+      description: "x",
+      amount: 1,
+      type: "DEBIT",
+      accountId: TEST_ACCOUNT_ID
+    });
 
     const result = await makeCaller().transactions.list({});
 
@@ -1598,8 +1776,8 @@ describe("transactions.list with tags", () => {
     const food = await caller.tags.create({ name: "Food", color: "#10B981" });
 
     await db.insert(transactions).values([
-      { id: "tx-t1", date: "2024-01-02", description: "a", amount: 1, type: "DEBIT" },
-      { id: "tx-t2", date: "2024-01-01", description: "b", amount: 2, type: "DEBIT" }
+      { id: "tx-t1", date: "2024-01-02", description: "a", amount: 1, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
+      { id: "tx-t2", date: "2024-01-01", description: "b", amount: 2, type: "DEBIT", accountId: TEST_ACCOUNT_ID }
     ]);
     await caller.tags.assignToTransactions({ tagId: travel.id, transactionIds: ["tx-t1", "tx-t2"] });
     await caller.tags.assignToTransactions({ tagId: food.id, transactionIds: ["tx-t1"] });
@@ -1616,9 +1794,14 @@ describe("transactions.list with tags", () => {
     const caller = makeCaller();
     const db = makeDb();
     const travel = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
-    await db
-      .insert(transactions)
-      .values({ id: "tx-shape", date: "2024-01-01", description: "x", amount: 1, type: "DEBIT" });
+    await db.insert(transactions).values({
+      id: "tx-shape",
+      date: "2024-01-01",
+      description: "x",
+      amount: 1,
+      type: "DEBIT",
+      accountId: TEST_ACCOUNT_ID
+    });
     await caller.tags.assignToTransactions({ tagId: travel.id, transactionIds: ["tx-shape"] });
 
     const result = await caller.transactions.list({});
@@ -1641,7 +1824,8 @@ describe("transactions.list with tags", () => {
       date: `2024-01-0${i + 1}`,
       description: `d${i}`,
       amount: 1,
-      type: "DEBIT" as const
+      type: "DEBIT" as const,
+      accountId: TEST_ACCOUNT_ID
     }));
     await db.insert(transactions).values(txValues);
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: txValues.map((t) => t.id) });
@@ -1672,6 +1856,11 @@ const aAccount = {
 };
 
 describe("accounts.list", () => {
+  // Accounts tests need a clean state — delete the seed account created in the outer beforeEach.
+  beforeEach(async () => {
+    await makeDb().delete(accounts);
+  });
+
   it("returns empty array when no accounts exist", async () => {
     const result = await makeCaller().accounts.list();
     expect(result).toEqual([]);
@@ -1697,16 +1886,17 @@ describe("accounts.list", () => {
     await caller.accounts.addBenefit({
       accountId: account.id,
       categoryGroup: "VARIABLE",
-      rewardType: "cashback",
+      rewardType: "CASHBACK",
       rewardRate: 0.03
     });
 
     const result = await caller.accounts.list();
+    const found = result.find((a) => a.id === account.id)!;
 
-    expect(result[0]!.benefits).toHaveLength(1);
-    expect(result[0]!.benefits[0]!.rewardType).toBe("cashback");
-    expect(result[0]!.benefits[0]!.rewardRate).toBe(0.03);
-    expect(result[0]!.benefits[0]!.categoryGroup).toBe("VARIABLE");
+    expect(found.benefits).toHaveLength(1);
+    expect(found.benefits[0]!.rewardType).toBe("CASHBACK");
+    expect(found.benefits[0]!.rewardRate).toBe(0.03);
+    expect(found.benefits[0]!.categoryGroup).toBe("VARIABLE");
   });
 
   it("does not mix benefits across accounts", async () => {
@@ -1716,13 +1906,13 @@ describe("accounts.list", () => {
     await caller.accounts.addBenefit({
       accountId: a1.id,
       categoryGroup: "FIXED",
-      rewardType: "points",
-      rewardRate: 0.02
+      rewardType: "POINTS",
+      rewardRate: 3.0
     });
     await caller.accounts.addBenefit({
       accountId: a2.id,
       categoryGroup: "VARIABLE",
-      rewardType: "miles",
+      rewardType: "CASHBACK",
       rewardRate: 0.05
     });
 
@@ -1731,9 +1921,9 @@ describe("accounts.list", () => {
     const r2 = result.find((a) => a.id === a2.id)!;
 
     expect(r1.benefits).toHaveLength(1);
-    expect(r1.benefits[0]!.rewardType).toBe("points");
+    expect(r1.benefits[0]!.rewardType).toBe("POINTS");
     expect(r2.benefits).toHaveLength(1);
-    expect(r2.benefits[0]!.rewardType).toBe("miles");
+    expect(r2.benefits[0]!.rewardType).toBe("CASHBACK");
   });
 });
 
@@ -1775,6 +1965,10 @@ describe("accounts.update", () => {
 });
 
 describe("accounts.delete", () => {
+  beforeEach(async () => {
+    await makeDb().delete(accounts);
+  });
+
   it("removes account and returns deletedId", async () => {
     const created = await makeCaller().accounts.create(aAccount);
 
@@ -1795,7 +1989,7 @@ describe("accounts.delete", () => {
     await caller.accounts.addBenefit({
       accountId: account.id,
       categoryGroup: "VARIABLE",
-      rewardType: "cashback",
+      rewardType: "CASHBACK",
       rewardRate: 0.03
     });
 
@@ -1814,14 +2008,14 @@ describe("accounts.addBenefit", () => {
     const benefit = await caller.accounts.addBenefit({
       accountId: account.id,
       categoryGroup: "VARIABLE",
-      rewardType: "cashback",
+      rewardType: "CASHBACK",
       rewardRate: 0.03
     });
 
     expect(benefit.id).toBeTruthy();
     expect(benefit.accountId).toBe(account.id);
     expect(benefit.categoryGroup).toBe("VARIABLE");
-    expect(benefit.rewardType).toBe("cashback");
+    expect(benefit.rewardType).toBe("CASHBACK");
     expect(benefit.rewardRate).toBe(0.03);
   });
 });
@@ -1833,14 +2027,14 @@ describe("accounts.updateBenefit", () => {
     const benefit = await caller.accounts.addBenefit({
       accountId: account.id,
       categoryGroup: "VARIABLE",
-      rewardType: "cashback",
+      rewardType: "CASHBACK",
       rewardRate: 0.03
     });
 
-    const updated = await caller.accounts.updateBenefit({ id: benefit.id, rewardRate: 0.05, rewardType: "points" });
+    const updated = await caller.accounts.updateBenefit({ id: benefit.id, rewardRate: 0.05, rewardType: "POINTS" });
 
     expect(updated.rewardRate).toBe(0.05);
-    expect(updated.rewardType).toBe("points");
+    expect(updated.rewardType).toBe("POINTS");
     expect(updated.categoryGroup).toBe("VARIABLE");
   });
 
@@ -1856,7 +2050,7 @@ describe("accounts.deleteBenefit", () => {
     const benefit = await caller.accounts.addBenefit({
       accountId: account.id,
       categoryGroup: "VARIABLE",
-      rewardType: "cashback",
+      rewardType: "CASHBACK",
       rewardRate: 0.03
     });
 
@@ -1899,11 +2093,128 @@ describe("transactions.upload with accountId", () => {
     const [stored] = await makeDb().select().from(transactions).where(eq(transactions.id, tx.id));
     expect(stored!.accountId).toBe(account.id);
   });
+});
 
-  it("stores null accountId when not provided", async () => {
-    await makeCaller().transactions.upload({ transactions: [tx], sourceFile: "bank.csv", mapping: aMapping });
+// ---------------------------------------------------------------------------
+// cardBenefits
+// ---------------------------------------------------------------------------
 
-    const [stored] = await makeDb().select().from(transactions).where(eq(transactions.id, tx.id));
-    expect(stored!.accountId).toBeNull();
+describe("cardBenefits.list", () => {
+  it("returns empty array when no benefits exist", async () => {
+    const result = await makeCaller().cardBenefits.list();
+    expect(result).toEqual([]);
+  });
+
+  it("returns benefits for all accounts ordered by accountId then categoryGroup", async () => {
+    const caller = makeCaller();
+    const a1 = await caller.accounts.create(aAccount);
+    const a2 = await caller.accounts.create({ ...aAccount, name: "Amex Gold", last4: "5678" });
+    await caller.cardBenefits.upsert({
+      accountId: a1.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "CASHBACK",
+      rewardRate: 0.03
+    });
+    await caller.cardBenefits.upsert({
+      accountId: a2.id,
+      categoryGroup: "FIXED",
+      rewardType: "POINTS",
+      rewardRate: 3.0
+    });
+
+    const result = await caller.cardBenefits.list();
+    expect(result).toHaveLength(2);
+  });
+});
+
+describe("cardBenefits.upsert", () => {
+  it("creates a new benefit when none exists for the account+categoryGroup", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+
+    const benefit = await caller.cardBenefits.upsert({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "CASHBACK",
+      rewardRate: 0.03,
+      notes: "3% on dining"
+    });
+
+    expect(benefit.id).toBeTruthy();
+    expect(benefit.accountId).toBe(account.id);
+    expect(benefit.categoryGroup).toBe("VARIABLE");
+    expect(benefit.rewardType).toBe("CASHBACK");
+    expect(benefit.rewardRate).toBe(0.03);
+    expect(benefit.notes).toBe("3% on dining");
+  });
+
+  it("updates existing benefit when same account+categoryGroup already exists", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+
+    const first = await caller.cardBenefits.upsert({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "CASHBACK",
+      rewardRate: 0.02
+    });
+
+    const updated = await caller.cardBenefits.upsert({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "POINTS",
+      rewardRate: 3.0,
+      notes: "upgraded"
+    });
+
+    // Same row, different values
+    expect(updated.id).toBe(first.id);
+    expect(updated.rewardType).toBe("POINTS");
+    expect(updated.rewardRate).toBe(3.0);
+    expect(updated.notes).toBe("upgraded");
+
+    const list = await caller.cardBenefits.list();
+    expect(list).toHaveLength(1);
+  });
+
+  it("allows different categoryGroups per account", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+
+    await caller.cardBenefits.upsert({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "CASHBACK",
+      rewardRate: 0.03
+    });
+    await caller.cardBenefits.upsert({
+      accountId: account.id,
+      categoryGroup: "FIXED",
+      rewardType: "POINTS",
+      rewardRate: 2.0
+    });
+    await caller.cardBenefits.upsert({
+      accountId: account.id,
+      categoryGroup: "INCOME",
+      rewardType: "CASHBACK",
+      rewardRate: 0.01
+    });
+
+    const list = await caller.cardBenefits.list();
+    expect(list).toHaveLength(3);
+  });
+
+  it("accepts rewardRate > 1 for points multipliers", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+
+    const benefit = await caller.cardBenefits.upsert({
+      accountId: account.id,
+      categoryGroup: "VARIABLE",
+      rewardType: "POINTS",
+      rewardRate: 5.0
+    });
+
+    expect(benefit.rewardRate).toBe(5.0);
   });
 });

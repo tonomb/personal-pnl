@@ -3,7 +3,18 @@ import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import * as schema from "@pnl/types";
-import { categories, getTagReportByName, listTagNames, tags, transactionTags, transactions } from "@pnl/types";
+import {
+  accounts,
+  cardBenefits,
+  categories,
+  getTagReportByName,
+  listTagNames,
+  tags,
+  transactionTags,
+  transactions
+} from "@pnl/types";
+
+const TEST_ACCOUNT_ID = "test-account-00000000-0000-0000-0000";
 
 function makeDb() {
   return drizzle(env.DB, { schema });
@@ -14,7 +25,17 @@ beforeEach(async () => {
   await db.delete(transactionTags);
   await db.delete(tags);
   await db.delete(transactions);
+  await db.delete(cardBenefits);
+  await db.delete(accounts);
   await db.delete(categories);
+  await db.insert(accounts).values({
+    id: TEST_ACCOUNT_ID,
+    name: "Test Bank",
+    institution: "Test Bank",
+    type: "CHECKING",
+    color: "#3b82f6",
+    createdAt: new Date().toISOString()
+  });
 });
 
 describe("listTagNames", () => {
@@ -67,7 +88,8 @@ describe("getTagReportByName", () => {
       description: "Dinner",
       amount: 50,
       type: "DEBIT",
-      categoryId: food!.id
+      categoryId: food!.id,
+      accountId: TEST_ACCOUNT_ID
     });
     await db.insert(transactionTags).values({ transactionId: "tx-1", tagId: "tag-1" });
 
@@ -118,8 +140,24 @@ describe("getTagReportByName", () => {
     const [food] = await db.insert(categories).values({ name: "Food", groupType: "VARIABLE" }).returning();
     await db.insert(tags).values({ id: "tag-1", name: "Trip", color: "#3B82F6" });
     await db.insert(transactions).values([
-      { id: "tx-1", date: "2024-03-03", description: "a", amount: 10, type: "DEBIT", categoryId: food!.id },
-      { id: "tx-2", date: "2024-03-09", description: "b", amount: 20, type: "DEBIT", categoryId: food!.id }
+      {
+        id: "tx-1",
+        date: "2024-03-03",
+        description: "a",
+        amount: 10,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "tx-2",
+        date: "2024-03-09",
+        description: "b",
+        amount: 20,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await db.insert(transactionTags).values([
       { transactionId: "tx-1", tagId: "tag-1" },
@@ -137,8 +175,24 @@ describe("getTagReportByName", () => {
     const [rent] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
     await db.insert(tags).values({ id: "tag-1", name: "Trip", color: "#3B82F6" });
     await db.insert(transactions).values([
-      { id: "tx-1", date: "2024-03-03", description: "Dinner", amount: 50, type: "DEBIT", categoryId: food!.id },
-      { id: "tx-2", date: "2024-03-05", description: "Hotel", amount: 200, type: "DEBIT", categoryId: rent!.id }
+      {
+        id: "tx-1",
+        date: "2024-03-03",
+        description: "Dinner",
+        amount: 50,
+        type: "DEBIT",
+        categoryId: food!.id,
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "tx-2",
+        date: "2024-03-05",
+        description: "Hotel",
+        amount: 200,
+        type: "DEBIT",
+        categoryId: rent!.id,
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await db.insert(transactionTags).values([
       { transactionId: "tx-1", tagId: "tag-1" },

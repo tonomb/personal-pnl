@@ -31,6 +31,7 @@ import {
   deleteCardBenefitInputSchema,
   deleteCategoryInputSchema,
   deleteTagInputSchema,
+  upsertCardBenefitInputSchema,
   getSavingsRateBenchmark,
   insertColumnMappingSchema,
   pnlGetKpisInputSchema,
@@ -256,6 +257,29 @@ export const appRouter = router({
         .returning({ id: cardBenefits.id });
       if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: `Card benefit ${input.id} not found` });
       return { deletedId: deleted.id };
+    })
+  }),
+
+  cardBenefits: router({
+    list: publicProcedure.query(async ({ ctx }) => {
+      return ctx.db.select().from(cardBenefits).orderBy(cardBenefits.accountId, cardBenefits.categoryGroup);
+    }),
+
+    upsert: publicProcedure.input(upsertCardBenefitInputSchema).mutation(async ({ input, ctx }) => {
+      const id = crypto.randomUUID();
+      const [result] = await ctx.db
+        .insert(cardBenefits)
+        .values({ id, ...input })
+        .onConflictDoUpdate({
+          target: [cardBenefits.accountId, cardBenefits.categoryGroup],
+          set: {
+            rewardType: input.rewardType,
+            rewardRate: input.rewardRate,
+            notes: input.notes ?? null
+          }
+        })
+        .returning();
+      return result!;
     })
   }),
 
@@ -606,7 +630,7 @@ export const appRouter = router({
           transactions: z.array(transactionInputSchema),
           sourceFile: z.string(),
           mapping: insertColumnMappingSchema,
-          accountId: z.string().nullable().optional()
+          accountId: z.string()
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -657,7 +681,7 @@ export const appRouter = router({
           }
           const newTransactions = input.transactions
             .filter((tx) => !existingIds.has(tx.id))
-            .map((tx) => ({ ...tx, accountId: input.accountId ?? null }));
+            .map((tx) => ({ ...tx, accountId: input.accountId }));
           event.duplicates = existingIds.size;
           event.newCount = newTransactions.length;
 

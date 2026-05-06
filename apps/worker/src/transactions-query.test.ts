@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import * as schema from "@pnl/types";
 import {
+  accounts,
+  cardBenefits,
   categories,
   columnMappings,
   getSpendingByCategory,
@@ -13,6 +15,8 @@ import {
   transactions
 } from "@pnl/types";
 
+const TEST_ACCOUNT_ID = "test-account-00000000-0000-0000-0000";
+
 function makeDb() {
   return drizzle(env.DB, { schema });
 }
@@ -21,7 +25,17 @@ beforeEach(async () => {
   const db = makeDb();
   await db.delete(transactions);
   await db.delete(columnMappings);
+  await db.delete(cardBenefits);
+  await db.delete(accounts);
   await db.delete(categories);
+  await db.insert(accounts).values({
+    id: TEST_ACCOUNT_ID,
+    name: "Test Bank",
+    institution: "Test Bank",
+    type: "CHECKING",
+    color: "#3b82f6",
+    createdAt: new Date().toISOString()
+  });
 });
 
 const baseTx = (overrides: Partial<typeof transactions.$inferInsert>) => ({
@@ -30,6 +44,7 @@ const baseTx = (overrides: Partial<typeof transactions.$inferInsert>) => ({
   description: "Coffee",
   amount: 4.5,
   type: "DEBIT" as const,
+  accountId: TEST_ACCOUNT_ID,
   sourceFile: "bank.csv",
   rawRow: "{}",
   createdAt: new Date().toISOString(),

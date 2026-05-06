@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import * as schema from "@pnl/types";
 import {
+  accounts,
+  cardBenefits,
   categories,
   columnMappings,
   getBudgetVariance,
@@ -13,6 +15,8 @@ import {
   transactions
 } from "@pnl/types";
 
+const TEST_ACCOUNT_ID = "test-account-00000000-0000-0000-0000";
+
 function makeDb() {
   return drizzle(env.DB, { schema });
 }
@@ -21,7 +25,17 @@ beforeEach(async () => {
   const db = makeDb();
   await db.delete(transactions);
   await db.delete(columnMappings);
+  await db.delete(cardBenefits);
+  await db.delete(accounts);
   await db.delete(categories);
+  await db.insert(accounts).values({
+    id: TEST_ACCOUNT_ID,
+    name: "Test Bank",
+    institution: "Test Bank",
+    type: "CHECKING",
+    color: "#3b82f6",
+    createdAt: new Date().toISOString()
+  });
 });
 
 const baseTx = (overrides: Partial<typeof transactions.$inferInsert>) => ({
@@ -30,6 +44,7 @@ const baseTx = (overrides: Partial<typeof transactions.$inferInsert>) => ({
   description: "Coffee",
   amount: 4.5,
   type: "DEBIT" as const,
+  accountId: TEST_ACCOUNT_ID,
   sourceFile: "bank.csv",
   rawRow: "{}",
   createdAt: new Date().toISOString(),
@@ -104,6 +119,7 @@ describe("getBudgetVariance", () => {
     const [rent] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
     const [fun] = await db.insert(categories).values({ name: "Fun", groupType: "VARIABLE" }).returning();
 
+    // Split into batches of ≤9 rows to stay within D1's 100 SQL variable limit (10 cols × 9 = 90)
     await db.insert(transactions).values([
       // Trailing months: Jan/Feb/Mar 2024
       baseTx({ id: "f1", date: "2024-01-10", amount: 100, categoryId: food!.id }),
@@ -116,7 +132,9 @@ describe("getBudgetVariance", () => {
       baseTx({ id: "r4", date: "2024-04-01", amount: 1500, categoryId: rent!.id }),
       // Fun: trailing avg 50, current 0 → UNDER
       baseTx({ id: "fun1", date: "2024-01-05", amount: 50, categoryId: fun!.id }),
-      baseTx({ id: "fun2", date: "2024-02-05", amount: 50, categoryId: fun!.id }),
+      baseTx({ id: "fun2", date: "2024-02-05", amount: 50, categoryId: fun!.id })
+    ]);
+    await db.insert(transactions).values([
       baseTx({ id: "fun3", date: "2024-03-05", amount: 50, categoryId: fun!.id }),
       // Current month food: 200 → OVER (avg 100)
       baseTx({ id: "f4", date: "2024-04-10", amount: 200, categoryId: food!.id })

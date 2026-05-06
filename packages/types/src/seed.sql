@@ -1,5 +1,19 @@
--- Idempotent: clears existing default categories and re-inserts the canonical set.
--- Transactions with old category_id references will have category_id = NULL (nullable FK).
+-- Idempotent: clears and re-inserts the canonical seed data.
+-- accounts — clear card_benefits first (FK), then accounts.
+DELETE FROM card_benefits WHERE account_id IN ('seed-account-chase-sapphire', 'seed-account-amex-gold');
+DELETE FROM accounts WHERE id IN ('seed-account-chase-sapphire', 'seed-account-amex-gold');
+
+INSERT INTO accounts (id, name, institution, type, last4, color, created_at) VALUES
+  ('seed-account-chase-sapphire', 'Chase Sapphire Reserve', 'Chase', 'CREDIT', '1234', '#3b82f6', datetime('now')),
+  ('seed-account-amex-gold',      'Amex Gold Card',         'Amex',  'CREDIT', '5678', '#f59e0b', datetime('now'));
+
+INSERT INTO card_benefits (id, account_id, category_group, reward_type, reward_rate, notes, created_at) VALUES
+  ('seed-cb-chase-variable', 'seed-account-chase-sapphire', 'VARIABLE', 'POINTS', 3.0, '3x on dining & travel', datetime('now')),
+  ('seed-cb-chase-fixed',    'seed-account-chase-sapphire', 'FIXED',    'POINTS', 1.0, '1x on fixed expenses', datetime('now')),
+  ('seed-cb-amex-variable',  'seed-account-amex-gold',      'VARIABLE', 'POINTS', 4.0, '4x on dining', datetime('now')),
+  ('seed-cb-amex-fixed',     'seed-account-amex-gold',      'FIXED',    'CASHBACK', 0.01, '1% on other', datetime('now'));
+
+-- categories — clear and re-insert the canonical default set.
 DELETE FROM categories WHERE is_default = 1;
 
 -- INCOME — green (#22c55e)

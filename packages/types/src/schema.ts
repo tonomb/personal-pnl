@@ -1,4 +1,4 @@
-import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, real, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -18,18 +18,23 @@ export const accounts = sqliteTable("accounts", {
     .notNull()
 });
 
-export const cardBenefits = sqliteTable("card_benefits", {
-  id: text("id").primaryKey(), // UUID
-  accountId: text("account_id")
-    .notNull()
-    .references(() => accounts.id, { onDelete: "cascade" }),
-  categoryGroup: text("category_group", { enum: ["INCOME", "FIXED", "VARIABLE", "IGNORED"] }).notNull(),
-  rewardType: text("reward_type").notNull(),
-  rewardRate: real("reward_rate").notNull(), // stored as decimal: 0.03 = 3%
-  createdAt: text("created_at")
-    .$defaultFn(() => new Date().toISOString())
-    .notNull()
-});
+export const cardBenefits = sqliteTable(
+  "card_benefits",
+  {
+    id: text("id").primaryKey(), // UUID
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    categoryGroup: text("category_group", { enum: ["INCOME", "FIXED", "VARIABLE", "IGNORED"] }).notNull(),
+    rewardType: text("reward_type", { enum: ["CASHBACK", "POINTS"] }).notNull(),
+    rewardRate: real("reward_rate").notNull(), // stored as decimal: 0.03 = 3%, 3.0 = 3x points
+    notes: text("notes"),
+    createdAt: text("created_at")
+      .$defaultFn(() => new Date().toISOString())
+      .notNull()
+  },
+  (table) => [unique("card_benefits_account_category_unq").on(table.accountId, table.categoryGroup)]
+);
 
 export const categories = sqliteTable("categories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -47,7 +52,9 @@ export const transactions = sqliteTable("transactions", {
   amount: real("amount").notNull(), // always positive
   type: text("type", { enum: ["DEBIT", "CREDIT"] }).notNull(),
   categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
-  accountId: text("account_id").references(() => accounts.id, { onDelete: "set null" }),
+  accountId: text("account_id")
+    .notNull()
+    .references(() => accounts.id, { onDelete: "cascade" }),
   sourceFile: text("source_file"),
   rawRow: text("raw_row"), // JSON text
   createdAt: text("created_at")
@@ -133,15 +140,25 @@ export const selectCardBenefitSchema = createSelectSchema(cardBenefits);
 export const createCardBenefitInputSchema = z.object({
   accountId: z.string().min(1),
   categoryGroup: z.enum(["INCOME", "FIXED", "VARIABLE", "IGNORED"]),
-  rewardType: z.string().trim().min(1, "Reward type required"),
-  rewardRate: z.number().min(0).max(1) // stored as decimal: 0.03 = 3%
+  rewardType: z.enum(["CASHBACK", "POINTS"]),
+  rewardRate: z.number().min(0), // 0.03 = 3% cashback, 3.0 = 3x points
+  notes: z.string().trim().nullable().optional()
+});
+
+export const upsertCardBenefitInputSchema = z.object({
+  accountId: z.string().min(1),
+  categoryGroup: z.enum(["INCOME", "FIXED", "VARIABLE", "IGNORED"]),
+  rewardType: z.enum(["CASHBACK", "POINTS"]),
+  rewardRate: z.number().min(0),
+  notes: z.string().trim().nullable().optional()
 });
 
 export const updateCardBenefitInputSchema = z.object({
   id: z.string().min(1),
   categoryGroup: z.enum(["INCOME", "FIXED", "VARIABLE", "IGNORED"]).optional(),
-  rewardType: z.string().trim().min(1).optional(),
-  rewardRate: z.number().min(0).max(1).optional()
+  rewardType: z.enum(["CASHBACK", "POINTS"]).optional(),
+  rewardRate: z.number().min(0).optional(),
+  notes: z.string().trim().nullable().optional()
 });
 
 export const deleteCardBenefitInputSchema = z.object({ id: z.string().min(1) });
@@ -152,7 +169,8 @@ export const selectCategorySchema = createSelectSchema(categories);
 export const insertTransactionSchema = createInsertSchema(transactions);
 export const selectTransactionSchema = createSelectSchema(transactions);
 
-export const transactionInputSchema = insertTransactionSchema.extend({
+// accountId is omitted — the upload endpoint assigns it from the outer accountId field.
+export const transactionInputSchema = insertTransactionSchema.omit({ accountId: true }).extend({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
   amount: z.number().positive("Amount must be positive")
 });

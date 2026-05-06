@@ -11,6 +11,14 @@ import type {
   Transaction
 } from "./schema";
 
+export type UpsertCardBenefitInput = {
+  accountId: string;
+  categoryGroup: "INCOME" | "FIXED" | "VARIABLE" | "IGNORED";
+  rewardType: "CASHBACK" | "POINTS";
+  rewardRate: number;
+  notes?: string | null;
+};
+
 export type AccountWithBenefits = Account & { benefits: CardBenefit[] };
 
 export type TransactionWithCategory = Transaction & {
@@ -190,10 +198,16 @@ export const appRouter = router({
             transactions: NewTransaction[];
             sourceFile: string;
             mapping: NewColumnMapping;
-            accountId?: string | null;
+            accountId: string;
           }
       )
       .mutation((): { inserted: number; duplicates: number } => ({ inserted: 0, duplicates: 0 }))
+  }),
+  cardBenefits: router({
+    list: publicProcedure.input((v: unknown) => v as void).query((): CardBenefit[] => null as unknown as CardBenefit[]),
+    upsert: publicProcedure
+      .input((v: unknown) => v as UpsertCardBenefitInput)
+      .mutation((): CardBenefit => null as unknown as CardBenefit)
   }),
   accounts: router({
     list: publicProcedure

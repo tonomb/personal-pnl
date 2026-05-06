@@ -69,11 +69,8 @@ export function ColumnMapper({ fileName, headers, previewRows, onConfirm, onCanc
     setMapping((prev) => ({ ...prev, [field]: value }));
   }
 
-  const isValid = Boolean(
-    mapping.dateCol &&
-    mapping.descriptionCol &&
-    (mapping.useDebitCredit ? mapping.debitCol && mapping.creditCol : mapping.amountCol)
-  );
+  const amountValid = mapping.useDebitCredit ? mapping.debitCol && mapping.creditCol : mapping.amountCol;
+  const isValid = Boolean(mapping.dateCol && mapping.descriptionCol && amountValid);
 
   // Columns to show in preview: only mapped ones
   const previewCols: { field: string; col: string }[] = [

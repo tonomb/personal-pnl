@@ -10,7 +10,7 @@ export const fixCmd = new Command("fix")
   .option("-r, --root", "Run fixes from root of repo. Defaults to cwd", false)
   .option("-d, --deps", "Fix dependency versions with syncpack")
   .option("-l, --lint", "Fix eslint issues")
-  .option("-f, --format", "Format code with prettier")
+  .option("-f, --format", "Format code with oxfmt")
   .option("-w, --workers-types", "Generate Workers runtime types (worker-configuration.d.ts) via wrangler types")
 
   .action(async ({ root, deps, lint, format, workersTypes }) => {
@@ -39,7 +39,7 @@ export const fixCmd = new Command("fix")
       deps: ["run-fix-deps"],
       lint: ["FIX_ESLINT=1", "turbo", turboFlags, "check:lint"].flat(),
       workersTypes: ["turbo", turboFlags, "fix:workers-types"].flat(),
-      format: ["prettier", ".", "--cache", "--write", "--log-level=warn"],
+      format: ["oxfmt", "--write", "."],
       formatShell: ["runx", "shfmt", "fix", "--skip-if-unavailable"]
     } as const satisfies { [key: string]: string[] };
 
@@ -95,9 +95,9 @@ export const fixCmd = new Command("fix")
     }
 
     if (format) {
-      echo(chalk.dim("formatting with prettier (and shfmt if available)..."));
+      echo(chalk.dim("formatting with oxfmt (and shfmt if available)..."));
 
-      const [prettierProc, shfmtProc] = await Promise.all([
+      const [oxfmtProc, shfmtProc] = await Promise.all([
         $({
           cwd: repoRoot // Must be run from root
         })`${fixes.format}`,
@@ -111,7 +111,7 @@ export const fixCmd = new Command("fix")
         [
           "format",
           fixes.format.join(" "),
-          getAndCheckOutcome({ exitCode: prettierProc.exitCode }),
+          getAndCheckOutcome({ exitCode: oxfmtProc.exitCode }),
           "Root"
         ] satisfies TableRow,
         [

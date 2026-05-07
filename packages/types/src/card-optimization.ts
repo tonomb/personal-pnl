@@ -5,14 +5,14 @@ import { add, multiply, subtract, toStorable } from "@pnl/money";
 
 import { accounts, cardBenefits, categories, transactions } from "./schema";
 
-import type { PnlDb } from "./pnl";
 import type {
   CardOptimizationAccountSpend,
   CardOptimizationCategoryGroup,
   CardOptimizationCategoryRow,
   CardOptimizationResult,
   CardOptimizationRewardType,
-  CardOptimizationSummary
+  CardOptimizationSummary,
+  PnlDb
 } from "./pnl";
 
 const SPEND_GROUPS: CardOptimizationCategoryGroup[] = ["FIXED", "VARIABLE"];

@@ -25,6 +25,7 @@
     "*.lock",
     "/turbo/generators/**/*.hbs",
     "**/drizzle/meta/**",
+    "apps/web/src/routeTree.gen.ts",
     "pnpm-lock.yaml",
     "vite.config.ts.timestamp*",
     "vitest.config.ts.timestamp*",

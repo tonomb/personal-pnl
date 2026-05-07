@@ -383,7 +383,7 @@ function CategorizePage() {
   const parentRef = useRef<HTMLDivElement>(null);
 
   const { data: txResult } = trpc.transactions.list.useQuery({});
-  const txData = txResult?.rows ?? [];
+  const txData = useMemo(() => txResult?.rows ?? [], [txResult]);
   const { data: catData } = trpc.categories.list.useQuery();
   const { data: tagData } = trpc.tags.list.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
   const tags = useMemo<Tag[]>(
@@ -627,7 +627,8 @@ function CategorizePage() {
   function toggleExpand(key: string) {
     setExpandedMerchants((prev) => {
       const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -635,7 +636,8 @@ function CategorizePage() {
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }

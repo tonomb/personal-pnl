@@ -5,7 +5,7 @@ import { RawPreviewPanel } from "./RawPreviewPanel";
 
 const HEADERS = ["Date", "Desc", "Amt"];
 
-function makeRows(n: number): Record<string, string>[] {
+function makeRows(n: number): Array<Record<string, string>> {
   return Array.from({ length: n }, (_, i) => ({
     Date: `2024-01-${String(i + 1).padStart(2, "0")}`,
     Desc: `row-${i}`,

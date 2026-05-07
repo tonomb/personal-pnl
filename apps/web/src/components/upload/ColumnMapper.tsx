@@ -73,13 +73,13 @@ export function ColumnMapper({ fileName, headers, previewRows, onConfirm, onCanc
   const isValid = Boolean(mapping.dateCol && mapping.descriptionCol && amountValid);
 
   // Columns to show in preview: only mapped ones
-  const previewCols: { field: string; col: string }[] = [
+  const previewCols: Array<{ field: string; col: string }> = [
     mapping.dateCol ? { field: "Date", col: mapping.dateCol } : null,
     mapping.descriptionCol ? { field: "Description", col: mapping.descriptionCol } : null,
     mapping.useDebitCredit && mapping.debitCol ? { field: "Debit", col: mapping.debitCol } : null,
     mapping.useDebitCredit && mapping.creditCol ? { field: "Credit", col: mapping.creditCol } : null,
     !mapping.useDebitCredit && mapping.amountCol ? { field: "Amount", col: mapping.amountCol } : null
-  ].filter(Boolean) as { field: string; col: string }[];
+  ].filter(Boolean) as Array<{ field: string; col: string }>;
 
   return (
     <div className="space-y-4 rounded-xl border p-4">

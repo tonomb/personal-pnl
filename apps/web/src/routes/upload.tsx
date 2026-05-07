@@ -26,7 +26,7 @@ export const Route = createFileRoute("/upload")({
 
 type FileStatus =
   | { phase: "parsing" }
-  | { phase: "mapping"; headers: string[]; rawRows: Record<string, string>[]; fingerprint: string }
+  | { phase: "mapping"; headers: string[]; rawRows: Array<Record<string, string>>; fingerprint: string }
   | { phase: "ready"; transactions: NewTransaction[]; mapping: NewColumnMapping }
   | { phase: "uploading" }
   | { phase: "done"; inserted: number; duplicates: number }
@@ -55,7 +55,7 @@ const BADGE_VARIANTS: Record<FileStatus["phase"], "default" | "secondary" | "des
 // ---------------------------------------------------------------------------
 
 function buildTransactions(
-  rawRows: Record<string, string>[],
+  rawRows: Array<Record<string, string>>,
   mapping: MappingState,
   sourceFile: string,
   accountId: string | null = null
@@ -143,7 +143,7 @@ function UploadPage() {
     });
   }
 
-  async function applyParsedRows(file: File, data: Record<string, string>[], headers: string[]) {
+  async function applyParsedRows(file: File, data: Array<Record<string, string>>, headers: string[]) {
     const fingerprint = generateFingerprint(headers);
 
     let existing = null;
@@ -172,7 +172,7 @@ function UploadPage() {
   }
 
   async function parseCsvAndContinue(csvStringOrFile: string | File, file: File) {
-    let parsed: { data: Record<string, string>[]; headers: string[] };
+    let parsed: { data: Array<Record<string, string>>; headers: string[] };
     try {
       parsed = await new Promise((resolve, reject) => {
         Papa.parse<Record<string, string>>(csvStringOrFile as string, {

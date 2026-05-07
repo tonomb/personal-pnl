@@ -569,7 +569,6 @@ export const appRouter = router({
       };
       try {
         const idChunks = chunks(input.ids, 90);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (ctx.db.batch as any)(
           idChunks.map((chunk) =>
             ctx.db.update(transactions).set({ categoryId: input.categoryId }).where(inArray(transactions.id, chunk))
@@ -645,8 +644,7 @@ export const appRouter = router({
 
           // Find which IDs already exist — batch all SELECT chunks into one D1 roundtrip
           const idChunks = chunks(submittedIds, 90);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const dedupeResults: { id: string }[][] = await (ctx.db.batch as any)(
+          const dedupeResults: Array<Array<{ id: string }>> = await (ctx.db.batch as any)(
             idChunks.map((idChunk) =>
               ctx.db.select({ id: transactions.id }).from(transactions).where(inArray(transactions.id, idChunk))
             )
@@ -669,7 +667,6 @@ export const appRouter = router({
           event.chunkSizes = insertChunks.map((c) => c.length);
 
           for (const batchGroup of chunks(insertChunks, 100)) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await (ctx.db.batch as any)(batchGroup.map((rows) => ctx.db.insert(transactions).values(rows)));
           }
 

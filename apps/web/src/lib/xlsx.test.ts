@@ -7,7 +7,7 @@ import { getSheetNames, xlsxToCsvString } from "./xlsx";
 // Helpers to build in-memory workbook ArrayBuffers without fixture files
 // ---------------------------------------------------------------------------
 
-function makeWorkbookBuffer(sheets: { name: string; data: (string | number)[][] }[]): ArrayBuffer {
+function makeWorkbookBuffer(sheets: Array<{ name: string; data: Array<Array<string | number>> }>): ArrayBuffer {
   const wb = XLSX.utils.book_new();
   for (const { name, data } of sheets) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), name);

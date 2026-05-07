@@ -2,7 +2,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 interface RawPreviewPanelProps {
   headers: string[];
-  rawRows: Record<string, string>[];
+  rawRows: Array<Record<string, string>>;
   maxRows?: number;
 }
 

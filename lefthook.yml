@@ -3,9 +3,13 @@ pre-commit:
   commands:
     oxlint:
       glob: "**/*.{ts,tsx,js,jsx}"
+      exclude:
+        - "**/worker-configuration.d.ts"
       run: pnpm exec oxlint --fix {staged_files}
     oxformat:
       glob: "**/*.{ts,tsx,js,jsx}"
+      exclude:
+        - "**/worker-configuration.d.ts"
       run: pnpm exec oxfmt --check {staged_files}
 
 pre-push:

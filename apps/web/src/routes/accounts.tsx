@@ -231,8 +231,9 @@ function BenefitsTable({ account }: { account: AccountWithBenefits }) {
                     id: "optimistic-" + Date.now(),
                     accountId: input.accountId,
                     categoryGroup: input.categoryGroup as CardBenefit["categoryGroup"],
-                    rewardType: input.rewardType,
+                    rewardType: input.rewardType as CardBenefit["rewardType"],
                     rewardRate: input.rewardRate,
+                    notes: null,
                     createdAt: new Date().toISOString()
                   } satisfies CardBenefit
                 ]
@@ -264,7 +265,9 @@ function BenefitsTable({ account }: { account: AccountWithBenefits }) {
                   ...(input.categoryGroup !== undefined && {
                     categoryGroup: input.categoryGroup as CardBenefit["categoryGroup"]
                   }),
-                  ...(input.rewardType !== undefined && { rewardType: input.rewardType }),
+                  ...(input.rewardType !== undefined && {
+                    rewardType: input.rewardType as CardBenefit["rewardType"]
+                  }),
                   ...(input.rewardRate !== undefined && { rewardRate: input.rewardRate })
                 }
               : b

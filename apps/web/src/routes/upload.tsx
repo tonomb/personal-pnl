@@ -58,7 +58,7 @@ function buildTransactions(
   rawRows: Array<Record<string, string>>,
   mapping: MappingState,
   sourceFile: string,
-  accountId: string | null = null
+  accountId: string
 ): NewTransaction[] {
   const seen = new Set<string>();
   const result: NewTransaction[] = [];
@@ -144,6 +144,7 @@ function UploadPage() {
   }
 
   async function applyParsedRows(file: File, data: Array<Record<string, string>>, headers: string[]) {
+    if (!selectedAccountId) return;
     const fingerprint = generateFingerprint(headers);
 
     let existing = null;
@@ -267,6 +268,7 @@ function UploadPage() {
   }
 
   function handleMappingConfirm(fileName: string, mapping: MappingState) {
+    if (!selectedAccountId) return;
     const status = fileMap.get(fileName);
     if (status?.phase !== "mapping") return;
 
@@ -276,6 +278,7 @@ function UploadPage() {
   }
 
   async function handleUploadAll() {
+    if (!selectedAccountId) return;
     for (const [fileName, status] of fileMap.entries()) {
       if (status.phase !== "ready") continue;
       updateFile(fileName, { phase: "uploading" });

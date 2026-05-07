@@ -1,6 +1,18 @@
 export * from "./schema";
 export { buildMonthlyPnL, computeMonthlyPnl, computePnlReport, getSavingsRateBenchmark } from "./pnl";
-export type { PnlDb, PnlRow } from "./pnl";
+export type {
+  CardOptimizationAccountSpend,
+  CardOptimizationCategoryGroup,
+  CardOptimizationCategoryRow,
+  CardOptimizationResult,
+  CardOptimizationRewardType,
+  CardOptimizationRewardTotals,
+  CardOptimizationSummary,
+  PnlDb,
+  PnlRow
+} from "./pnl";
+export { analyzeCardOptimization, buildCardOptimizationResult } from "./card-optimization";
+export type { CardOptimizationBenefitInput, CardOptimizationSpendInput } from "./card-optimization";
 export { getSpendingByCategory, getTopMerchants, listTransactions, searchTransactions } from "./transactions-query";
 export type {
   ListTransactionsInput,

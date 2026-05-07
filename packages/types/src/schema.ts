@@ -256,6 +256,12 @@ export const mcpCashflowTrendInputSchema = z.object({
   months: z.number().int().min(1).max(24).default(6)
 });
 
+// LAG-33 card optimization input schema.
+export const mcpAnalyzeCardOptimizationInputSchema = z.object({
+  startMonth: monthFilterSchema,
+  endMonth: monthFilterSchema
+});
+
 export const categorizeInputSchema = z.object({
   ids: z.array(z.string()).min(1).max(500),
   categoryId: z.number().int().nullable()

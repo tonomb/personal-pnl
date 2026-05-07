@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import * as schema from "@pnl/types";
 import {
+  analyzeCardOptimization,
   computeMonthlyPnl,
   computePnlReport,
   getBudgetVariance,
@@ -18,6 +19,7 @@ import {
   getTopMerchants,
   listTagNames,
   listTransactions,
+  mcpAnalyzeCardOptimizationInputSchema,
   mcpBudgetVarianceInputSchema,
   mcpCashflowTrendInputSchema,
   mcpGetTransactionsInputSchema,
@@ -331,6 +333,26 @@ export class PnLMcp extends McpAgent<Env> {
       async () => {
         const db = drizzle(this.env.DB, { schema });
         const result = await getCategoryList(db);
+        return jsonText(result);
+      }
+    );
+
+    this.server.registerTool(
+      "analyzeCardOptimization",
+      {
+        description:
+          "Compare actual card usage against optimal card routing for FIXED and VARIABLE spend between " +
+          "`startMonth` and `endMonth` (inclusive, YYYY-MM). For each category group it returns: total spend, " +
+          "per-account breakdown (spend, configured `reward_rate` and `reward_type`, rewards earned), the " +
+          "best available rate across all configured cards, rewards potential at that best rate, and the " +
+          "missed-rewards delta (sum of (max_rate − actual_rate) × spend per account). The top-level " +
+          "`summary` keeps cashback ($) and points totals separate so the agent can reason about each " +
+          "currency independently — DO NOT add cashback dollars and points together. Read-only.",
+        inputSchema: mcpAnalyzeCardOptimizationInputSchema.shape
+      },
+      async ({ startMonth, endMonth }) => {
+        const db = drizzle(this.env.DB, { schema });
+        const result = await analyzeCardOptimization(db, startMonth, endMonth);
         return jsonText(result);
       }
     );

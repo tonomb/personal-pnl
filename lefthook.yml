@@ -16,7 +16,5 @@ pre-commit:
 
 pre-push:
   commands:
-    deps:
-      run: pnpm exec syncpack lint
-    test:
-      run: pnpm test
+    ci:
+      run: bun runx ci check

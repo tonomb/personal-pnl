@@ -11,6 +11,53 @@ import type { CategoryTotal, KpiSummary, MonthlyPnL, PnLReport } from "./trpc";
 
 export type PnlDb = ReturnType<typeof drizzle<typeof schema>>;
 
+// ---------------------------------------------------------------------------
+// Card optimization (LAG-33) response types
+// ---------------------------------------------------------------------------
+
+export type CardOptimizationCategoryGroup = "FIXED" | "VARIABLE";
+export type CardOptimizationRewardType = "CASHBACK" | "POINTS";
+
+export type CardOptimizationAccountSpend = {
+  account_id: string;
+  account_name: string;
+  spend: number;
+  reward_rate: number;
+  reward_type: CardOptimizationRewardType | null;
+  rewards_earned: number;
+};
+
+export type CardOptimizationCategoryRow = {
+  category_group: CardOptimizationCategoryGroup;
+  total_spend: number;
+  by_account: CardOptimizationAccountSpend[];
+  best_rate: number;
+  best_rate_account_id: string | null;
+  best_rate_account_name: string | null;
+  best_reward_type: CardOptimizationRewardType | null;
+  rewards_earned: number;
+  rewards_potential: number;
+  missed_rewards: number;
+};
+
+export type CardOptimizationRewardTotals = {
+  earned: number;
+  potential: number;
+  missed: number;
+};
+
+export type CardOptimizationSummary = {
+  cashback: CardOptimizationRewardTotals;
+  points: CardOptimizationRewardTotals;
+};
+
+export type CardOptimizationResult = {
+  start_month: string;
+  end_month: string;
+  category_groups: CardOptimizationCategoryRow[];
+  summary: CardOptimizationSummary;
+};
+
 export type PnlRow = {
   month: string;
   categoryId: number | null;

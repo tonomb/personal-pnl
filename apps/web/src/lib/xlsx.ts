@@ -19,7 +19,7 @@ export function xlsxToCsvString(buffer: ArrayBuffer, sheetName: string, headerRo
   if (!sheet) throw new Error(`Sheet "${sheetName}" not found`);
   if (headerRow === 0) return XLSX.utils.sheet_to_csv(sheet);
   // sheet_to_json with range:number starts from that row index (0-based)
-  const rows = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, {
+  const rows = XLSX.utils.sheet_to_json<Array<string | number>>(sheet, {
     header: 1,
     range: headerRow,
     defval: ""

@@ -22,6 +22,7 @@ async function buildTagReport(db: PnlDb, tag: Tag): Promise<TagReport> {
       description: transactions.description,
       amount: transactions.amount,
       type: transactions.type,
+      accountId: transactions.accountId,
       categoryId: transactions.categoryId,
       sourceFile: transactions.sourceFile,
       rawRow: transactions.rawRow,

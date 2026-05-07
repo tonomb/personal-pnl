@@ -13,7 +13,7 @@ export const checkCmd = new Command("check")
   .option("-t, --types", "Check for TypeScript issues")
   .option(
     "-f, --format",
-    "Check for formatting issues with prettier. Also checks shell scripts if shfmt and rg (ripgrep) are available"
+    "Check for formatting issues with oxfmt. Also checks shell scripts if shfmt and rg (ripgrep) are available"
   )
 
   .option("--continue", "Use --continue when executing turbo commands", false)
@@ -50,9 +50,8 @@ export const checkCmd = new Command("check")
       // eslint can be run from anywhere and it'll automatically only lint the current dir and children
       lint: ["run-eslint"],
       types: ["turbo", turboFlags, "check:types"].flat(),
-      format: ["prettier", ".", "--cache", "--check", "--log-level=warn"],
-      formatShell: ["runx", "shfmt", "check", "--skip-if-unavailable"],
-      workersTypes: ["turbo", turboFlags, "check:workers-types"].flat()
+      format: ["oxfmt", "--check", "."],
+      formatShell: ["runx", "shfmt", "check", "--skip-if-unavailable"]
     } as const satisfies { [key: string]: string[] };
 
     type TableRow = [string, string, string, string];
@@ -105,9 +104,9 @@ export const checkCmd = new Command("check")
     }
 
     if (format) {
-      echo(chalk.dim("checking formatting with prettier (and shfmt if available)..."));
+      echo(chalk.dim("checking formatting with oxfmt (and shfmt if available)..."));
 
-      const [prettierProc, shfmtProc] = await Promise.all([
+      const [oxfmtProc, shfmtProc] = await Promise.all([
         $({
           cwd: repoRoot // Must be run from root
         })`${checks.format}`,
@@ -121,7 +120,7 @@ export const checkCmd = new Command("check")
         [
           "format",
           checks.format.join(" "),
-          getAndCheckOutcome({ exitCode: prettierProc.exitCode }),
+          getAndCheckOutcome({ exitCode: oxfmtProc.exitCode }),
           "Root"
         ] satisfies TableRow,
         [
@@ -134,16 +133,6 @@ export const checkCmd = new Command("check")
           "Root"
         ] satisfies TableRow
       );
-
-      const workersTypesExitCode = await $({
-        cwd: repoRoot // Must be run from root
-      })`${checks.workersTypes}`.exitCode;
-      table.push([
-        "workers types",
-        checks.workersTypes.join(" "),
-        getAndCheckOutcome({ exitCode: workersTypesExitCode }),
-        "Root"
-      ] satisfies TableRow);
     }
 
     echo(table.toString());

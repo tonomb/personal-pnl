@@ -32,7 +32,9 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
         "**/dist/**",
         "eslint.config.ts",
         "**/eslint.config.ts",
-        "**/worker-configuration.d.ts"
+        "**/worker-configuration.d.ts",
+        "**/drizzle.config.ts",
+        "**/routeTree.gen.ts"
       ]
     },
 

@@ -3,12 +3,20 @@ pre-commit:
   commands:
     oxlint:
       glob: "**/*.{ts,tsx,js,jsx}"
+      exclude:
+        - "**/worker-configuration.d.ts"
+        - "apps/web/src/routeTree.gen.ts"
       run: pnpm exec oxlint --fix {staged_files}
     oxformat:
       glob: "**/*.{ts,tsx,js,jsx}"
+      exclude:
+        - "**/worker-configuration.d.ts"
+        - "apps/web/src/routeTree.gen.ts"
       run: pnpm exec oxfmt --check {staged_files}
 
 pre-push:
   commands:
+    deps:
+      run: pnpm exec syncpack lint
     test:
       run: pnpm test

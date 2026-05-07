@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 
 // @ts-nocheck
 
@@ -8,148 +8,170 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root";
-import { Route as AccountsRouteImport } from "./routes/accounts";
-import { Route as UploadRouteImport } from "./routes/upload";
-import { Route as PnlRouteImport } from "./routes/pnl";
-import { Route as CategorizeRouteImport } from "./routes/categorize";
-import { Route as IndexRouteImport } from "./routes/index";
-import { Route as TagsIndexRouteImport } from "./routes/tags/index";
-import { Route as TagsTagIdRouteImport } from "./routes/tags/$tagId";
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as UploadRouteImport } from './routes/upload'
+import { Route as PnlRouteImport } from './routes/pnl'
+import { Route as CategorizeRouteImport } from './routes/categorize'
+import { Route as AccountsRouteImport } from './routes/accounts'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as TagsIndexRouteImport } from './routes/tags/index'
+import { Route as TagsTagIdRouteImport } from './routes/tags/$tagId'
 
-const AccountsRoute = AccountsRouteImport.update({
-  id: "/accounts",
-  path: "/accounts",
-  getParentRoute: () => rootRouteImport
-} as any);
 const UploadRoute = UploadRouteImport.update({
-  id: "/upload",
-  path: "/upload",
-  getParentRoute: () => rootRouteImport
-} as any);
+  id: '/upload',
+  path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PnlRoute = PnlRouteImport.update({
-  id: "/pnl",
-  path: "/pnl",
-  getParentRoute: () => rootRouteImport
-} as any);
+  id: '/pnl',
+  path: '/pnl',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CategorizeRoute = CategorizeRouteImport.update({
-  id: "/categorize",
-  path: "/categorize",
-  getParentRoute: () => rootRouteImport
-} as any);
+  id: '/categorize',
+  path: '/categorize',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountsRoute = AccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
-  getParentRoute: () => rootRouteImport
-} as any);
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TagsIndexRoute = TagsIndexRouteImport.update({
-  id: "/tags/",
-  path: "/tags/",
-  getParentRoute: () => rootRouteImport
-} as any);
+  id: '/tags/',
+  path: '/tags/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TagsTagIdRoute = TagsTagIdRouteImport.update({
-  id: "/tags/$tagId",
-  path: "/tags/$tagId",
-  getParentRoute: () => rootRouteImport
-} as any);
+  id: '/tags/$tagId',
+  path: '/tags/$tagId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute;
-  "/accounts": typeof AccountsRoute;
-  "/categorize": typeof CategorizeRoute;
-  "/pnl": typeof PnlRoute;
-  "/upload": typeof UploadRoute;
-  "/tags/$tagId": typeof TagsTagIdRoute;
-  "/tags/": typeof TagsIndexRoute;
+  '/': typeof IndexRoute
+  '/accounts': typeof AccountsRoute
+  '/categorize': typeof CategorizeRoute
+  '/pnl': typeof PnlRoute
+  '/upload': typeof UploadRoute
+  '/tags/$tagId': typeof TagsTagIdRoute
+  '/tags/': typeof TagsIndexRoute
 }
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute;
-  "/accounts": typeof AccountsRoute;
-  "/categorize": typeof CategorizeRoute;
-  "/pnl": typeof PnlRoute;
-  "/upload": typeof UploadRoute;
-  "/tags/$tagId": typeof TagsTagIdRoute;
-  "/tags": typeof TagsIndexRoute;
+  '/': typeof IndexRoute
+  '/accounts': typeof AccountsRoute
+  '/categorize': typeof CategorizeRoute
+  '/pnl': typeof PnlRoute
+  '/upload': typeof UploadRoute
+  '/tags/$tagId': typeof TagsTagIdRoute
+  '/tags': typeof TagsIndexRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  "/": typeof IndexRoute;
-  "/accounts": typeof AccountsRoute;
-  "/categorize": typeof CategorizeRoute;
-  "/pnl": typeof PnlRoute;
-  "/upload": typeof UploadRoute;
-  "/tags/$tagId": typeof TagsTagIdRoute;
-  "/tags/": typeof TagsIndexRoute;
+  __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/accounts': typeof AccountsRoute
+  '/categorize': typeof CategorizeRoute
+  '/pnl': typeof PnlRoute
+  '/upload': typeof UploadRoute
+  '/tags/$tagId': typeof TagsTagIdRoute
+  '/tags/': typeof TagsIndexRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/accounts" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags/";
-  fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/accounts" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags";
-  id: "__root__" | "/" | "/accounts" | "/categorize" | "/pnl" | "/upload" | "/tags/$tagId" | "/tags/";
-  fileRoutesById: FileRoutesById;
+  fileRoutesByFullPath: FileRoutesByFullPath
+  fullPaths:
+    | '/'
+    | '/accounts'
+    | '/categorize'
+    | '/pnl'
+    | '/upload'
+    | '/tags/$tagId'
+    | '/tags/'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+    | '/'
+    | '/accounts'
+    | '/categorize'
+    | '/pnl'
+    | '/upload'
+    | '/tags/$tagId'
+    | '/tags'
+  id:
+    | '__root__'
+    | '/'
+    | '/accounts'
+    | '/categorize'
+    | '/pnl'
+    | '/upload'
+    | '/tags/$tagId'
+    | '/tags/'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  AccountsRoute: typeof AccountsRoute;
-  CategorizeRoute: typeof CategorizeRoute;
-  PnlRoute: typeof PnlRoute;
-  UploadRoute: typeof UploadRoute;
-  TagsTagIdRoute: typeof TagsTagIdRoute;
-  TagsIndexRoute: typeof TagsIndexRoute;
+  IndexRoute: typeof IndexRoute
+  AccountsRoute: typeof AccountsRoute
+  CategorizeRoute: typeof CategorizeRoute
+  PnlRoute: typeof PnlRoute
+  UploadRoute: typeof UploadRoute
+  TagsTagIdRoute: typeof TagsTagIdRoute
+  TagsIndexRoute: typeof TagsIndexRoute
 }
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/upload": {
-      id: "/upload";
-      path: "/upload";
-      fullPath: "/upload";
-      preLoaderRoute: typeof UploadRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/pnl": {
-      id: "/pnl";
-      path: "/pnl";
-      fullPath: "/pnl";
-      preLoaderRoute: typeof PnlRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/categorize": {
-      id: "/categorize";
-      path: "/categorize";
-      fullPath: "/categorize";
-      preLoaderRoute: typeof CategorizeRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/tags/": {
-      id: "/tags/";
-      path: "/tags";
-      fullPath: "/tags/";
-      preLoaderRoute: typeof TagsIndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/accounts": {
-      id: "/accounts";
-      path: "/accounts";
-      fullPath: "/accounts";
-      preLoaderRoute: typeof AccountsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/tags/$tagId": {
-      id: "/tags/$tagId";
-      path: "/tags/$tagId";
-      fullPath: "/tags/$tagId";
-      preLoaderRoute: typeof TagsTagIdRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+    '/upload': {
+      id: '/upload'
+      path: '/upload'
+      fullPath: '/upload'
+      preLoaderRoute: typeof UploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pnl': {
+      id: '/pnl'
+      path: '/pnl'
+      fullPath: '/pnl'
+      preLoaderRoute: typeof PnlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/categorize': {
+      id: '/categorize'
+      path: '/categorize'
+      fullPath: '/categorize'
+      preLoaderRoute: typeof CategorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/accounts': {
+      id: '/accounts'
+      path: '/accounts'
+      fullPath: '/accounts'
+      preLoaderRoute: typeof AccountsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tags/': {
+      id: '/tags/'
+      path: '/tags'
+      fullPath: '/tags/'
+      preLoaderRoute: typeof TagsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tags/$tagId': {
+      id: '/tags/$tagId'
+      path: '/tags/$tagId'
+      fullPath: '/tags/$tagId'
+      preLoaderRoute: typeof TagsTagIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -160,6 +182,8 @@ const rootRouteChildren: RootRouteChildren = {
   PnlRoute: PnlRoute,
   UploadRoute: UploadRoute,
   TagsTagIdRoute: TagsTagIdRoute,
-  TagsIndexRoute: TagsIndexRoute
-};
-export const routeTree = rootRouteImport._addFileChildren(rootRouteChildren)._addFileTypes<FileRouteTypes>();
+  TagsIndexRoute: TagsIndexRoute,
+}
+export const routeTree = rootRouteImport
+  ._addFileChildren(rootRouteChildren)
+  ._addFileTypes<FileRouteTypes>()

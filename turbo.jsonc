@@ -36,7 +36,7 @@
     "deploy": {
       "cache": false,
       "dependsOn": ["build", "topo"],
-      "env": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"],
+      "env": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_DATABASE_ID"],
       "outputLogs": "new-only"
     },
     // build:wrangler isn't used much, but can be useful for debugging
@@ -50,7 +50,7 @@
     },
     "//#test:ci": {
       "dependsOn": [
-        "build"
+        "^build"
         // Packages that need to be built before running tests can be added here.
         // Example:
         // "@repo/test-helpers#build"
@@ -102,10 +102,6 @@
     "fix:workers-types": {
       "dependsOn": ["topo"],
       "outputs": ["worker-configuration.d.ts"],
-      "outputLogs": "new-only"
-    },
-    "//#build": {
-      "dependsOn": ["^build"],
       "outputLogs": "new-only"
     }
   }

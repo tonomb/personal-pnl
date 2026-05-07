@@ -18,6 +18,7 @@ const makeTx = (id: string, amount: number, type: "CREDIT" | "DEBIT", categoryId
   description: "Test transaction",
   amount,
   type,
+  accountId: null,
   categoryId,
   sourceFile: null,
   rawRow: null,

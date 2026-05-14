@@ -12,12 +12,29 @@ interface SheetSelectorProps {
 export function SheetSelector({ sheetNames, onSelect, onCancel }: SheetSelectorProps) {
   const isMultiSheet = sheetNames.length > 1;
   const [selected, setSelected] = useState<string>(isMultiSheet ? "" : sheetNames[0]);
-  // 1-indexed for display; converted to 0-indexed on confirm
-  const [headerRowDisplay, setHeaderRowDisplay] = useState<number>(1);
+  const [inputValue, setInputValue] = useState<string>("1");
+  const [inputError, setInputError] = useState<string>("");
+
+  function validateAndSet(raw: string) {
+    setInputValue(raw);
+    if (raw === "") {
+      setInputError("Enter a positive whole number");
+    } else if (!/^\d+$/.test(raw)) {
+      setInputError("Enter a positive whole number");
+    } else if (parseInt(raw, 10) < 1) {
+      setInputError("Must be at least 1");
+    } else {
+      setInputError("");
+    }
+  }
 
   function handleConfirm() {
-    onSelect(selected, headerRowDisplay - 1);
+    const parsed = parseInt(inputValue, 10);
+    onSelect(selected, parsed - 1);
   }
+
+  const isInputValid =
+    inputError === "" && inputValue !== "" && /^\d+$/.test(inputValue) && parseInt(inputValue, 10) >= 1;
 
   return (
     <div className="space-y-4 rounded-xl border p-4">
@@ -54,17 +71,31 @@ export function SheetSelector({ sheetNames, onSelect, onCancel }: SheetSelectorP
         <input
           id="header-row"
           aria-label="Header row"
-          type="number"
-          min={1}
-          value={headerRowDisplay}
-          onChange={(e) => setHeaderRowDisplay(Math.max(1, parseInt(e.target.value) || 1))}
-          className="h-8 w-24 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
+          type="text"
+          inputMode="numeric"
+          value={inputValue}
+          onChange={(e) => validateAndSet(e.target.value)}
+          aria-invalid={inputError !== ""}
+          aria-describedby={inputError ? "header-row-error" : "header-row-hint"}
+          className={`h-8 w-24 rounded-lg border bg-transparent px-2.5 text-sm outline-none focus:ring-2 focus:ring-ring/50 ${
+            inputError
+              ? "border-destructive focus:border-destructive focus:ring-destructive/50"
+              : "border-input focus:border-ring"
+          }`}
         />
-        <p className="text-muted-foreground text-xs">Row number where column headers appear (1 = first row)</p>
+        {inputError ? (
+          <p id="header-row-error" role="alert" className="text-xs text-destructive">
+            {inputError}
+          </p>
+        ) : (
+          <p id="header-row-hint" className="text-muted-foreground text-xs">
+            Row number where column headers appear (1 = first row)
+          </p>
+        )}
       </div>
 
       <div className="flex gap-2">
-        <Button disabled={!selected} onClick={handleConfirm}>
+        <Button disabled={!selected || !isInputValid} onClick={handleConfirm}>
           Confirm
         </Button>
         <Button variant="outline" onClick={onCancel}>

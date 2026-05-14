@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -32,11 +32,23 @@ describe("SheetSelector — sheet selection", () => {
 });
 
 describe("SheetSelector — header row", () => {
-  it("renders a header row number input defaulting to 1", () => {
+  it("renders a header row text input defaulting to 1", () => {
     render(<SheetSelector sheetNames={SINGLE_SHEET} onSelect={vi.fn()} onCancel={vi.fn()} />);
-    const input = screen.getByRole("spinbutton", { name: /header row/i });
+    const input = screen.getByRole("textbox", { name: /header row/i });
     expect(input).toBeInTheDocument();
-    expect(input).toHaveValue(1);
+    expect(input).toHaveValue("1");
+  });
+
+  it("accepts direct keyboard entry of a number", async () => {
+    const user = userEvent.setup();
+    render(<SheetSelector sheetNames={SINGLE_SHEET} onSelect={vi.fn()} onCancel={vi.fn()} />);
+
+    const input = screen.getByRole("textbox", { name: /header row/i });
+    await user.clear(input);
+    await user.type(input, "7");
+
+    expect(input).toHaveValue("7");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("calls onSelect with sheetName and 0-indexed headerRow when confirmed", async () => {
@@ -44,8 +56,9 @@ describe("SheetSelector — header row", () => {
     const onSelect = vi.fn();
     render(<SheetSelector sheetNames={SINGLE_SHEET} onSelect={onSelect} onCancel={vi.fn()} />);
 
-    const input = screen.getByRole("spinbutton", { name: /header row/i });
-    fireEvent.change(input, { target: { value: "7" } });
+    const input = screen.getByRole("textbox", { name: /header row/i });
+    await user.clear(input);
+    await user.type(input, "7");
     await user.click(screen.getByRole("button", { name: /confirm/i }));
 
     // user enters 1-indexed (7), we pass 0-indexed (6)
@@ -61,6 +74,56 @@ describe("SheetSelector — header row", () => {
     await user.click(screen.getByRole("button", { name: /confirm/i }));
 
     expect(onSelect).toHaveBeenCalledWith("Savings", 0);
+  });
+
+  it("shows an error and disables confirm for non-numeric input", async () => {
+    const user = userEvent.setup();
+    render(<SheetSelector sheetNames={SINGLE_SHEET} onSelect={vi.fn()} onCancel={vi.fn()} />);
+
+    const input = screen.getByRole("textbox", { name: /header row/i });
+    await user.clear(input);
+    await user.type(input, "abc");
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /confirm/i })).toBeDisabled();
+  });
+
+  it("shows an error and disables confirm for zero", async () => {
+    const user = userEvent.setup();
+    render(<SheetSelector sheetNames={SINGLE_SHEET} onSelect={vi.fn()} onCancel={vi.fn()} />);
+
+    const input = screen.getByRole("textbox", { name: /header row/i });
+    await user.clear(input);
+    await user.type(input, "0");
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /confirm/i })).toBeDisabled();
+  });
+
+  it("shows an error and disables confirm when the field is cleared", async () => {
+    const user = userEvent.setup();
+    render(<SheetSelector sheetNames={SINGLE_SHEET} onSelect={vi.fn()} onCancel={vi.fn()} />);
+
+    const input = screen.getByRole("textbox", { name: /header row/i });
+    await user.clear(input);
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /confirm/i })).toBeDisabled();
+  });
+
+  it("recovers from an error state once a valid number is entered", async () => {
+    const user = userEvent.setup();
+    render(<SheetSelector sheetNames={SINGLE_SHEET} onSelect={vi.fn()} onCancel={vi.fn()} />);
+
+    const input = screen.getByRole("textbox", { name: /header row/i });
+    await user.clear(input);
+    await user.type(input, "abc");
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "3");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /confirm/i })).not.toBeDisabled();
   });
 });
 

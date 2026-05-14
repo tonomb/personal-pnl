@@ -1,81 +1,37 @@
-const MONTH_MAP: Record<string, string> = {
-  jan: "01",
-  feb: "02",
-  mar: "03",
-  apr: "04",
-  may: "05",
-  jun: "06",
-  jul: "07",
-  aug: "08",
-  sep: "09",
-  oct: "10",
-  nov: "11",
-  dec: "12"
-};
+import { format, isValid, parse } from "date-fns";
 
-function pad2(n: string | number): string {
-  return String(n).padStart(2, "0");
-}
+// Formats tried in order — most unambiguous first.
+// DD/MM is listed before MM/DD so ambiguous dates (both parts ≤ 12) default
+// to the European/Mexican convention used by most real bank statements.
+// yearFirst=true formats are skipped when the input doesn't start with 4 digits,
+// preventing e.g. "1/3/26" from being misread as yyyy/MM/dd (year=1).
+const DATE_FORMATS: Array<{ fmt: string; yearFirst: boolean }> = [
+  { fmt: "yyyy-MM-dd", yearFirst: true },
+  { fmt: "dd MMM yyyy", yearFirst: false },
+  { fmt: "dd MMMM yyyy", yearFirst: false },
+  { fmt: "yyyy/MM/dd", yearFirst: true },
+  { fmt: "dd/MM/yyyy", yearFirst: false },
+  { fmt: "MM/dd/yyyy", yearFirst: false },
+  { fmt: "d/M/yy", yearFirst: false }
+];
 
-/**
- * Tries to parse a date string in several common bank statement formats and
- * returns a canonical YYYY-MM-DD string, or null if no format matched.
- *
- * Detection order (most unambiguous first):
- *   1. YYYY-MM-DD           — already ISO, pass through
- *   2. DD MMM YYYY          — "31 Jan 2026" (Amex Mexico)
- *   3. YYYY/MM/DD
- *   4. DD/MM/YYYY or MM/DD/YYYY or D/M/YY  (slash or dash separated)
- *      • first part > 12  → day first
- *      • second part > 12 → month first
- *      • both ≤ 12        → assume DD/MM (European/Mexican default)
- */
+const REFERENCE_DATE = new Date(2000, 0, 1);
+
 export function normalizeDate(raw: string): string | null {
   const s = raw.trim();
   if (!s) return null;
 
-  // 1. Already ISO
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const startsWithFourDigits = /^\d{4}/.test(s);
 
-  // 2. DD MMM YYYY  e.g. "31 Jan 2026" or "1 January 2026"
-  const dMonY = s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
-  if (dMonY) {
-    const month = MONTH_MAP[dMonY[2].toLowerCase().slice(0, 3)];
-    if (month) {
-      const day = parseInt(dMonY[1], 10);
-      if (day >= 1 && day <= 31) return `${dMonY[3]}-${month}-${pad2(day)}`;
+  for (const { fmt, yearFirst } of DATE_FORMATS) {
+    if (yearFirst && !startsWithFourDigits) continue;
+    const parsed = parse(s, fmt, REFERENCE_DATE);
+    if (isValid(parsed)) {
+      // date-fns does not expand 2-digit years; apply the standard rule manually
+      const yr = parsed.getFullYear();
+      if (yr < 100) parsed.setFullYear(yr >= 50 ? 1900 + yr : 2000 + yr);
+      return format(parsed, "yyyy-MM-dd");
     }
-  }
-
-  // 3. YYYY/MM/DD
-  const ySlash = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-  if (ySlash) {
-    const m = parseInt(ySlash[2], 10);
-    const d = parseInt(ySlash[3], 10);
-    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return `${ySlash[1]}-${pad2(m)}-${pad2(d)}`;
-  }
-
-  // 4. Two-part numeric: D/M/YY, DD/MM/YYYY, MM/DD/YYYY (separator: / or -)
-  const parts = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-  if (parts) {
-    const a = parseInt(parts[1], 10);
-    const b = parseInt(parts[2], 10);
-    let yearStr = parts[3];
-    if (yearStr.length === 2) {
-      yearStr = parseInt(yearStr, 10) >= 50 ? `19${yearStr}` : `20${yearStr}`;
-    }
-    let day: number, month: number;
-    if (a > 12) {
-      day = a;
-      month = b; // must be DD/MM
-    } else if (b > 12) {
-      day = b;
-      month = a; // must be MM/DD
-    } else {
-      day = a;
-      month = b; // ambiguous — default DD/MM
-    }
-    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) return `${yearStr}-${pad2(month)}-${pad2(day)}`;
   }
 
   return null;

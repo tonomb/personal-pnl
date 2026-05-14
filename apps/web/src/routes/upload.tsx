@@ -10,7 +10,7 @@ import { ColumnMapper, type MappingState } from "@/components/upload/ColumnMappe
 import { DropZone } from "@/components/upload/DropZone";
 import { RawPreviewPanel } from "@/components/upload/RawPreviewPanel";
 import { SheetSelector } from "@/components/upload/SheetSelector";
-import { generateFingerprint, generateTransactionId, normalizeDate, parseAmount } from "@/lib/csv";
+import { generateFingerprint, generateTransactionId, normalizeDate, parseAmount, parseDebitCredit } from "@/lib/csv";
 import { getSheetNames, xlsxToCsvString } from "@/lib/xlsx";
 import { trpc } from "@/lib/trpc";
 
@@ -79,15 +79,10 @@ function buildTransactions(
     let type: "DEBIT" | "CREDIT";
 
     if (mapping.useDebitCredit) {
-      const debitVal = parseFloat((row[mapping.debitCol!] ?? "").replace(/[$,()]/g, "")) || 0;
-      const creditVal = parseFloat((row[mapping.creditCol!] ?? "").replace(/[$,()]/g, "")) || 0;
-      if (debitVal > 0) {
-        amount = debitVal;
-        type = "DEBIT";
-      } else {
-        amount = creditVal;
-        type = "CREDIT";
-      }
+      const parsed = parseDebitCredit(row[mapping.debitCol!] ?? "", row[mapping.creditCol!] ?? "");
+      if (!parsed) continue;
+      amount = parsed.amount;
+      type = parsed.type;
     } else {
       const parsed = parseAmount(row[mapping.amountCol!] ?? "0");
       amount = parsed.amount;

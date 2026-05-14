@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { generateFingerprint, generateTransactionId, normalizeDate, parseAmount } from "./csv";
+import { generateFingerprint, generateTransactionId, normalizeDate, parseAmount, parseDebitCredit } from "./csv";
 
 describe("generateFingerprint", () => {
   it("is order-independent — same headers in different order produce the same fingerprint", () => {
@@ -77,5 +77,31 @@ describe("parseAmount", () => {
 
   it("parses zero as CREDIT", () => {
     expect(parseAmount("0.00")).toEqual({ amount: 0, type: "CREDIT" });
+  });
+});
+
+describe("parseDebitCredit", () => {
+  it("BBVA CARGO row: debit populated, credit empty → DEBIT", () => {
+    expect(parseDebitCredit("490.00", "")).toEqual({ amount: 490, type: "DEBIT" });
+  });
+
+  it("BBVA ABONO row: credit negative value → CREDIT with positive amount", () => {
+    expect(parseDebitCredit("", "-2421.01")).toEqual({ amount: 2421.01, type: "CREDIT" });
+  });
+
+  it("BBVA ABONO row: comma-formatted negative credit → CREDIT with positive amount", () => {
+    expect(parseDebitCredit("", "-2,421.01")).toEqual({ amount: 2421.01, type: "CREDIT" });
+  });
+
+  it("both columns empty (cardholder header row) → null", () => {
+    expect(parseDebitCredit("", "")).toBeNull();
+  });
+
+  it("both columns whitespace → null", () => {
+    expect(parseDebitCredit("  ", " ")).toBeNull();
+  });
+
+  it("non-numeric in debit, credit empty → null", () => {
+    expect(parseDebitCredit("abc", "")).toBeNull();
   });
 });

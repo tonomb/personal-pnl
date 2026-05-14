@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { normalizeDate } from "@/lib/csv";
 
 export interface MappingState {
   dateCol: string | undefined;
@@ -156,9 +157,22 @@ export function ColumnMapper({ fileName, headers, previewRows, onConfirm, onCanc
           <TableBody>
             {previewRows.map((row, i) => (
               <TableRow key={i}>
-                {previewCols.map(({ col }) => {
+                {previewCols.map(({ field, col }) => {
                   const colIndex = headers.indexOf(col);
-                  return <TableCell key={col}>{row[colIndex]}</TableCell>;
+                  const raw = row[colIndex];
+                  if (field === "Date") {
+                    const normalized = normalizeDate(raw);
+                    return (
+                      <TableCell key={col}>
+                        {normalized ?? (
+                          <span className="text-destructive" title={`Cannot parse: "${raw}"`}>
+                            {raw}
+                          </span>
+                        )}
+                      </TableCell>
+                    );
+                  }
+                  return <TableCell key={col}>{raw}</TableCell>;
                 })}
               </TableRow>
             ))}

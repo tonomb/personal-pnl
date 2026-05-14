@@ -10,7 +10,7 @@ import { ColumnMapper, type MappingState } from "@/components/upload/ColumnMappe
 import { DropZone } from "@/components/upload/DropZone";
 import { RawPreviewPanel } from "@/components/upload/RawPreviewPanel";
 import { SheetSelector } from "@/components/upload/SheetSelector";
-import { generateFingerprint, generateTransactionId, parseAmount } from "@/lib/csv";
+import { generateFingerprint, generateTransactionId, normalizeDate, parseAmount } from "@/lib/csv";
 import { getSheetNames, xlsxToCsvString } from "@/lib/xlsx";
 import { trpc } from "@/lib/trpc";
 
@@ -59,14 +59,21 @@ function buildTransactions(
   mapping: MappingState,
   sourceFile: string,
   accountId: string
-): NewTransaction[] {
+): { transactions: NewTransaction[]; badDateRows: string[] } {
   const seen = new Set<string>();
   const result: NewTransaction[] = [];
+  const badDateRows: string[] = [];
 
   for (const row of rawRows) {
-    const date = (row[mapping.dateCol!] ?? "").trim();
+    const rawDate = (row[mapping.dateCol!] ?? "").trim();
     const description = (row[mapping.descriptionCol!] ?? "").trim();
-    if (!date || !description) continue;
+    if (!rawDate || !description) continue;
+
+    const date = normalizeDate(rawDate);
+    if (!date) {
+      badDateRows.push(rawDate);
+      continue;
+    }
 
     let amount: number;
     let type: "DEBIT" | "CREDIT";
@@ -104,7 +111,7 @@ function buildTransactions(
     });
   }
 
-  return result;
+  return { transactions: result, badDateRows };
 }
 
 function toDbMapping(mapping: MappingState, fingerprint: string): NewColumnMapping {
@@ -163,10 +170,20 @@ function UploadPage() {
         creditCol: existing.creditCol ?? undefined,
         useDebitCredit: Boolean(existing.debitCol && existing.creditCol)
       };
-      const txs = buildTransactions(data, syntheticMapping, file.name, selectedAccountId);
+      const { transactions: txs, badDateRows } = buildTransactions(
+        data,
+        syntheticMapping,
+        file.name,
+        selectedAccountId
+      );
       const dbMapping = toDbMapping(syntheticMapping, fingerprint);
       updateFile(file.name, { phase: "ready", transactions: txs, mapping: dbMapping });
       toast(`Auto-mapped "${file.name}" from previous upload`);
+      if (badDateRows.length > 0) {
+        toast.warning(
+          `${badDateRows.length} row(s) skipped — unrecognized date format: ${badDateRows.slice(0, 3).join(", ")}${badDateRows.length > 3 ? "…" : ""}`
+        );
+      }
     } else {
       updateFile(file.name, { phase: "mapping", headers, rawRows: data, fingerprint });
     }
@@ -272,9 +289,14 @@ function UploadPage() {
     const status = fileMap.get(fileName);
     if (status?.phase !== "mapping") return;
 
-    const txs = buildTransactions(status.rawRows, mapping, fileName, selectedAccountId);
+    const { transactions: txs, badDateRows } = buildTransactions(status.rawRows, mapping, fileName, selectedAccountId);
     const dbMapping = toDbMapping(mapping, status.fingerprint);
     updateFile(fileName, { phase: "ready", transactions: txs, mapping: dbMapping });
+    if (badDateRows.length > 0) {
+      toast.warning(
+        `${badDateRows.length} row(s) skipped — unrecognized date format: ${badDateRows.slice(0, 3).join(", ")}${badDateRows.length > 3 ? "…" : ""}`
+      );
+    }
   }
 
   async function handleUploadAll() {

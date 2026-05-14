@@ -166,6 +166,132 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
+// Edit Account Form
+// ---------------------------------------------------------------------------
+
+function EditAccountForm({ account, onDone }: { account: AccountWithBenefits; onDone: () => void }) {
+  const [form, setForm] = useState<AccountFormState>({
+    name: account.name,
+    institution: account.institution,
+    type: account.type,
+    last4: account.last4 ?? "",
+    color: account.color
+  });
+  const utils = trpc.useUtils();
+
+  const updateMutation = trpc.accounts.update.useMutation({
+    onMutate: async (input) => {
+      await utils.accounts.list.cancel();
+      const snapshot = utils.accounts.list.getData();
+      utils.accounts.list.setData(undefined, (old) =>
+        old?.map((a) =>
+          a.id === input.id
+            ? {
+                ...a,
+                ...(input.name !== undefined && { name: input.name }),
+                ...(input.institution !== undefined && { institution: input.institution }),
+                ...(input.type !== undefined && { type: input.type as Account["type"] }),
+                ...(input.last4 !== undefined && { last4: input.last4 }),
+                ...(input.color !== undefined && { color: input.color })
+              }
+            : a
+        )
+      );
+      return { snapshot };
+    },
+    onError: (_err, _input, ctx) => {
+      utils.accounts.list.setData(undefined, ctx?.snapshot);
+      toast.error("Failed to update account");
+    },
+    onSuccess: () => {
+      toast("Account updated");
+      onDone();
+    },
+    onSettled: () => void utils.accounts.list.invalidate()
+  });
+
+  function setField<K extends keyof AccountFormState>(key: K, value: AccountFormState[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim() || !form.institution.trim()) return;
+    updateMutation.mutate({
+      id: account.id,
+      name: form.name.trim(),
+      institution: form.institution.trim(),
+      type: form.type,
+      last4: form.last4.trim() || null,
+      color: form.color
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border bg-muted/30 p-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Name</label>
+          <Input
+            placeholder="Chase Sapphire"
+            value={form.name}
+            onChange={(e) => setField("name", e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Institution</label>
+          <Input
+            placeholder="Chase"
+            value={form.institution}
+            onChange={(e) => setField("institution", e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Type</label>
+          <Select value={form.type} onValueChange={(v) => setField("type", v as AccountFormState["type"])}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACCOUNT_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {TYPE_LABELS[t]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Last 4 digits (optional)</label>
+          <Input
+            placeholder="1234"
+            value={form.last4}
+            maxLength={4}
+            onChange={(e) => setField("last4", e.target.value.replace(/\D/g, ""))}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">Color</label>
+        <ColorPicker value={form.color} onChange={(c) => setField("color", c)} />
+      </div>
+
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={updateMutation.isPending}>
+          Save
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Color picker
 // ---------------------------------------------------------------------------
 
@@ -519,6 +645,7 @@ function BenefitGroupSelect({
 
 function AccountCard({ account }: { account: AccountWithBenefits }) {
   const utils = trpc.useUtils();
+  const [editing, setEditing] = useState(false);
 
   const deleteMutation = trpc.accounts.delete.useMutation({
     onMutate: async (input) => {
@@ -548,16 +675,22 @@ function AccountCard({ account }: { account: AccountWithBenefits }) {
             <span className="text-muted-foreground text-xs">{account.institution}</span>
             {account.last4 && <span className="text-muted-foreground text-xs">····{account.last4}</span>}
           </div>
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            className="text-destructive hover:text-destructive"
-            onClick={() => deleteMutation.mutate({ id: account.id })}
-            disabled={deleteMutation.isPending}
-          >
-            <Trash2Icon className="size-3.5" />
-          </Button>
+          <div className="flex gap-1">
+            <Button size="icon-xs" variant="ghost" onClick={() => setEditing((v) => !v)}>
+              <PencilIcon className="size-3.5" />
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => deleteMutation.mutate({ id: account.id })}
+              disabled={deleteMutation.isPending}
+            >
+              <Trash2Icon className="size-3.5" />
+            </Button>
+          </div>
         </div>
+        {editing && <EditAccountForm account={account} onDone={() => setEditing(false)} />}
         <CardTitle>Card Benefits</CardTitle>
       </CardHeader>
       <CardContent>

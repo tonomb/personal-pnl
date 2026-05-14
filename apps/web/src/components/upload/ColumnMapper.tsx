@@ -159,7 +159,7 @@ export function ColumnMapper({ fileName, headers, previewRows, onConfirm, onCanc
               <TableRow key={i}>
                 {previewCols.map(({ field, col }) => {
                   const colIndex = headers.indexOf(col);
-                  const raw = row[colIndex];
+                  const raw = row[colIndex] ?? "";
                   if (field === "Date") {
                     const normalized = normalizeDate(raw);
                     return (

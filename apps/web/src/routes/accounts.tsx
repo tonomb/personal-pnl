@@ -24,6 +24,7 @@ export const Route = createFileRoute("/accounts")({
 
 const ACCOUNT_TYPES = ["CHECKING", "SAVINGS", "CREDIT"] as const;
 const CATEGORY_GROUPS = ["INCOME", "FIXED", "VARIABLE", "IGNORED"] as const;
+const REWARD_TYPES = ["CASHBACK", "POINTS"] as const;
 
 const TYPE_LABELS: Record<string, string> = {
   CHECKING: "Checking",
@@ -202,7 +203,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (hex: strin
 
 type BenefitRowEditState = {
   categoryGroup: (typeof CATEGORY_GROUPS)[number];
-  rewardType: string;
+  rewardType: (typeof REWARD_TYPES)[number];
   rewardRate: string; // displayed as %, stored as decimal
 };
 
@@ -212,7 +213,7 @@ function BenefitsTable({ account }: { account: AccountWithBenefits }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<BenefitRowEditState>({
     categoryGroup: "VARIABLE",
-    rewardType: "",
+    rewardType: "CASHBACK",
     rewardRate: ""
   });
 
@@ -356,10 +357,9 @@ function BenefitsTable({ account }: { account: AccountWithBenefits }) {
                     />
                   </TableCell>
                   <TableCell>
-                    <Input
-                      className="h-7 text-sm"
+                    <RewardTypeSelect
                       value={editState.rewardType}
-                      onChange={(e) => setEditState((s) => ({ ...s, rewardType: e.target.value }))}
+                      onChange={(v) => setEditState((s) => ({ ...s, rewardType: v }))}
                     />
                   </TableCell>
                   <TableCell>
@@ -425,12 +425,9 @@ function BenefitsTable({ account }: { account: AccountWithBenefits }) {
                   />
                 </TableCell>
                 <TableCell>
-                  <Input
-                    autoFocus
-                    className="h-7 text-sm"
-                    placeholder="cashback"
+                  <RewardTypeSelect
                     value={editState.rewardType}
-                    onChange={(e) => setEditState((s) => ({ ...s, rewardType: e.target.value }))}
+                    onChange={(v) => setEditState((s) => ({ ...s, rewardType: v }))}
                   />
                 </TableCell>
                 <TableCell>
@@ -506,6 +503,29 @@ function BenefitGroupSelect({
         {CATEGORY_GROUPS.map((g) => (
           <SelectItem key={g} value={g} className="text-xs capitalize">
             {g.charAt(0) + g.slice(1).toLowerCase()}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function RewardTypeSelect({
+  value,
+  onChange
+}: {
+  value: (typeof REWARD_TYPES)[number];
+  onChange: (v: (typeof REWARD_TYPES)[number]) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as (typeof REWARD_TYPES)[number])}>
+      <SelectTrigger className="h-7 text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {REWARD_TYPES.map((r) => (
+          <SelectItem key={r} value={r} className="text-xs capitalize">
+            {r.charAt(0) + r.slice(1).toLowerCase()}
           </SelectItem>
         ))}
       </SelectContent>

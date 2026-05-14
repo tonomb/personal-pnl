@@ -12,7 +12,9 @@ export function AccountSelector({ value, onChange, accounts }: Props) {
   return (
     <Select value={value ?? ""} onValueChange={(v) => v && onChange(v)}>
       <SelectTrigger className="w-full">
-        <SelectValue placeholder="Select account…" />
+        <SelectValue placeholder="Select account…">
+          {(selectedValue: string) => accounts.find((a) => a.id === selectedValue)?.name ?? selectedValue}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {accounts.map((a) => (

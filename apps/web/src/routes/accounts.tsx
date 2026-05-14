@@ -455,7 +455,7 @@ function BenefitsTable({ account }: { account: AccountWithBenefits }) {
                       variant="ghost"
                       onClick={() => {
                         setAdding(false);
-                        setEditState({ categoryGroup: "VARIABLE", rewardType: "", rewardRate: "" });
+                        setEditState({ categoryGroup: "VARIABLE", rewardType: "CASHBACK", rewardRate: "" });
                       }}
                     >
                       <XIcon className="size-3" />
@@ -476,7 +476,7 @@ function BenefitsTable({ account }: { account: AccountWithBenefits }) {
           variant="ghost"
           onClick={() => {
             setAdding(true);
-            setEditState({ categoryGroup: "VARIABLE", rewardType: "", rewardRate: "" });
+            setEditState({ categoryGroup: "VARIABLE", rewardType: "CASHBACK", rewardRate: "" });
           }}
         >
           <PlusIcon className="size-3" />

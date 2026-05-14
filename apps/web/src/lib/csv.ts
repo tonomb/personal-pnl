@@ -62,3 +62,22 @@ export function parseAmount(raw: string): { amount: number; type: "DEBIT" | "CRE
     type: isNegative ? "DEBIT" : "CREDIT"
   };
 }
+
+export function parseDebitCredit(
+  rawDebit: string,
+  rawCredit: string
+): { amount: number; type: "DEBIT" | "CREDIT" } | null {
+  const debitStr = rawDebit.trim();
+  const creditStr = rawCredit.trim();
+
+  if (debitStr) {
+    const val = parseFloat(debitStr.replace(/[$,()]/g, ""));
+    if (!isNaN(val)) return { amount: Math.abs(val), type: "DEBIT" };
+  }
+  if (creditStr) {
+    const val = parseFloat(creditStr.replace(/[$,()]/g, ""));
+    if (!isNaN(val)) return { amount: Math.abs(val), type: "CREDIT" };
+  }
+
+  return null;
+}

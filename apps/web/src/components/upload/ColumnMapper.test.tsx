@@ -71,4 +71,63 @@ describe("ColumnMapper", () => {
 
     expect(screen.getByText("2024-01-01")).toBeInTheDocument();
   });
+
+  it("normalizes a non-ISO date like '31 Jan 2026' to '2026-01-31' in the preview", async () => {
+    const user = userEvent.setup();
+    render(
+      <ColumnMapper
+        fileName="bank.csv"
+        headers={["Date", "Desc", "Amt"]}
+        previewRows={[["31 Jan 2026", "Groceries", "-12.00"]]}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /date/i }), "Date");
+
+    expect(screen.getByText("2026-01-31")).toBeInTheDocument();
+  });
+
+  it("shows unparseable date values in red text", async () => {
+    const user = userEvent.setup();
+    render(
+      <ColumnMapper
+        fileName="bank.csv"
+        headers={["Date", "Desc", "Amt"]}
+        previewRows={[["not-a-date", "Groceries", "-12.00"]]}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /date/i }), "Date");
+
+    const bad = screen.getByText("not-a-date");
+    expect(bad.tagName).toBe("SPAN");
+    expect(bad).toHaveClass("text-destructive");
+  });
+
+  it("adds preview columns live as each mapping is selected", async () => {
+    const user = userEvent.setup();
+    render(
+      <ColumnMapper
+        fileName="bank.csv"
+        headers={["Date", "Desc", "Amt"]}
+        previewRows={[["2024-03-15", "Salary", "1000.00"]]}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /date/i }), "Date");
+    expect(screen.getByRole("columnheader", { name: /date/i })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /description/i })).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /description/i }), "Desc");
+    expect(screen.getByRole("columnheader", { name: /description/i })).toBeInTheDocument();
+    expect(screen.getByText("Salary")).toBeInTheDocument();
+  });
 });

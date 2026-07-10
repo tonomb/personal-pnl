@@ -738,6 +738,25 @@ describe("pnl.getReport", () => {
     expect(result.ytdExpenses).toBe(200);
   });
 
+  it("counts a CREDIT-typed charge in an expense category toward that category (LAG-46)", async () => {
+    // Credit-card statements import charges as CREDIT; the category groupType,
+    // not the bank-derived type, decides the P&L bucket, so the amounts must
+    // still sum into the expense total instead of vanishing.
+    const db = makeDb();
+    const [cat] = await db.insert(categories).values({ name: "Dining", groupType: "VARIABLE" }).returning();
+    await db
+      .insert(transactions)
+      .values([
+        makePnlTx({ id: "r-lag46a", date: "2024-01-10", amount: 170, type: "CREDIT", categoryId: cat!.id }),
+        makePnlTx({ id: "r-lag46b", date: "2024-01-11", amount: 195, type: "DEBIT", categoryId: cat!.id })
+      ]);
+
+    const result = await makeCaller().pnl.getReport({ year: 2024 });
+    expect(result.months[0]!.variable.total).toBe(365);
+    expect(result.months[0]!.variable.items[0]!.total).toBe(365);
+    expect(result.ytdExpenses).toBe(365);
+  });
+
   it("excludes IGNORED transactions from net/income/fixed/variable but tracks in ignored group", async () => {
     const db = makeDb();
     const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();

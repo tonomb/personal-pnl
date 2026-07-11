@@ -11,7 +11,7 @@ type Props = {
 export function AccountSelector({ value, onChange, accounts }: Props) {
   return (
     <Select value={value ?? ""} onValueChange={(v) => v && onChange(v)}>
-      <SelectTrigger className="w-full">
+      <SelectTrigger className="w-full" aria-label="Account">
         <SelectValue placeholder="Select account…">
           {(selectedValue: string) => accounts.find((a) => a.id === selectedValue)?.name ?? selectedValue}
         </SelectValue>

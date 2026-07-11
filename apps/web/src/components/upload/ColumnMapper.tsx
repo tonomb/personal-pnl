@@ -2,7 +2,10 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AccountSelector } from "@/components/accounts/AccountSelector";
 import { normalizeDate } from "@/lib/csv";
+
+import type { AccountWithBenefits } from "@pnl/types";
 
 export interface MappingState {
   dateCol: string | undefined;
@@ -17,7 +20,10 @@ interface ColumnMapperProps {
   fileName: string;
   headers: string[];
   previewRows: string[][];
-  onConfirm: (mapping: MappingState) => void;
+  accounts: AccountWithBenefits[];
+  initialAccountId?: string | null;
+  initialMapping?: MappingState;
+  onConfirm: (mapping: MappingState, accountId: string) => void;
   onCancel: () => void;
 }
 
@@ -56,22 +62,34 @@ function FieldSelect({
   );
 }
 
-export function ColumnMapper({ fileName, headers, previewRows, onConfirm, onCancel }: ColumnMapperProps) {
-  const [mapping, setMapping] = useState<MappingState>({
-    dateCol: undefined,
-    descriptionCol: undefined,
-    amountCol: undefined,
-    debitCol: undefined,
-    creditCol: undefined,
-    useDebitCredit: false
-  });
+export function ColumnMapper({
+  fileName,
+  headers,
+  previewRows,
+  accounts,
+  initialAccountId,
+  initialMapping,
+  onConfirm,
+  onCancel
+}: ColumnMapperProps) {
+  const [mapping, setMapping] = useState<MappingState>(
+    initialMapping ?? {
+      dateCol: undefined,
+      descriptionCol: undefined,
+      amountCol: undefined,
+      debitCol: undefined,
+      creditCol: undefined,
+      useDebitCredit: false
+    }
+  );
+  const [accountId, setAccountId] = useState<string | null>(initialAccountId ?? null);
 
   function set(field: keyof MappingState, value: string | boolean | undefined) {
     setMapping((prev) => ({ ...prev, [field]: value }));
   }
 
   const amountValid = mapping.useDebitCredit ? mapping.debitCol && mapping.creditCol : mapping.amountCol;
-  const isValid = Boolean(mapping.dateCol && mapping.descriptionCol && amountValid);
+  const isValid = Boolean(mapping.dateCol && mapping.descriptionCol && amountValid && accountId);
 
   // Columns to show in preview: only mapped ones
   const previewCols: Array<{ field: string; col: string }> = [
@@ -87,6 +105,18 @@ export function ColumnMapper({ fileName, headers, previewRows, onConfirm, onCanc
       <p className="text-sm font-medium">
         Map columns for <span className="font-mono">{fileName}</span>
       </p>
+
+      {initialMapping && (
+        <p className="text-muted-foreground text-xs">
+          Columns auto-filled from a previous upload — pick an account and confirm.
+        </p>
+      )}
+
+      {/* Account */}
+      <div className="flex flex-col gap-1 max-w-xs">
+        <label className="text-xs font-medium text-muted-foreground">Account</label>
+        <AccountSelector value={accountId} onChange={setAccountId} accounts={accounts} />
+      </div>
 
       {/* Mapping selects */}
       <div className="flex flex-wrap gap-4">
@@ -182,7 +212,7 @@ export function ColumnMapper({ fileName, headers, previewRows, onConfirm, onCanc
 
       {/* Actions */}
       <div className="flex gap-2">
-        <Button disabled={!isValid} onClick={() => onConfirm(mapping)}>
+        <Button disabled={!isValid} onClick={() => onConfirm(mapping, accountId!)}>
           Confirm mapping
         </Button>
         <Button variant="outline" onClick={onCancel}>

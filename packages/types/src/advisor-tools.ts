@@ -288,10 +288,14 @@ export async function getCashflowTrend(
   for (const r of rows) {
     const bucket = byMonth.get(r.month);
     if (!bucket) continue;
+    // Total every transaction in the category regardless of DEBIT/CREDIT type;
+    // the category's groupType is the source of truth for direction. Summing a
+    // single direction dropped credit-card charges imported as CREDIT (LAG-46).
+    const rowTotal = Number(r.creditTotal ?? 0) + Number(r.debitTotal ?? 0);
     if (r.groupType === "INCOME") {
-      bucket.income += Number(r.creditTotal ?? 0);
+      bucket.income += rowTotal;
     } else if (r.groupType === "FIXED" || r.groupType === "VARIABLE") {
-      bucket.expenses += Number(r.debitTotal ?? 0);
+      bucket.expenses += rowTotal;
     }
   }
 

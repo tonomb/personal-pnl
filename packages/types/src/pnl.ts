@@ -78,18 +78,21 @@ export function buildMonthlyPnL(month: string, rows: PnlRow[]): MonthlyPnL {
 
   for (const row of monthRows) {
     if (row.categoryId === null) continue;
-    const ct: CategoryTotal = { categoryId: row.categoryId, categoryName: row.categoryName ?? "", total: 0 };
+    // The category's groupType is the source of truth for P&L direction, so a
+    // category's total is the sum of every transaction in it regardless of the
+    // DEBIT/CREDIT type. The bank-derived type is unreliable across statement
+    // formats (e.g. credit-card charges get imported as CREDIT), and gating the
+    // total on a single direction silently dropped those amounts — the category
+    // showed line items but a $0 total (LAG-46).
+    const total = toStorable(add(row.creditTotal, row.debitTotal));
+    const ct: CategoryTotal = { categoryId: row.categoryId, categoryName: row.categoryName ?? "", total };
     if (row.groupType === "INCOME") {
-      ct.total = toStorable(new Decimal(row.creditTotal));
       incomeItems.push(ct);
     } else if (row.groupType === "FIXED") {
-      ct.total = toStorable(new Decimal(row.debitTotal));
       fixedItems.push(ct);
     } else if (row.groupType === "VARIABLE") {
-      ct.total = toStorable(new Decimal(row.debitTotal));
       variableItems.push(ct);
     } else if (row.groupType === "IGNORED") {
-      ct.total = toStorable(add(row.creditTotal, row.debitTotal));
       ignoredItems.push(ct);
     }
   }

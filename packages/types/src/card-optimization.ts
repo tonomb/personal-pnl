@@ -189,14 +189,18 @@ export async function analyzeCardOptimization(
   endMonth: string
 ): Promise<CardOptimizationResult> {
   const monthExpr = sql<string>`strftime('%Y-%m', ${transactions.date})`;
-  const debitSum = sql<number>`SUM(CASE WHEN ${transactions.type} = 'DEBIT' THEN ${transactions.amount} ELSE 0 END)`;
+  // Sum every transaction in the category regardless of DEBIT/CREDIT type — the
+  // WHERE already restricts to FIXED/VARIABLE expense categories. Summing only
+  // DEBIT dropped credit-card charges imported as CREDIT, understating spend and
+  // rewards for the very cards this tool analyzes (LAG-46).
+  const spendSum = sql<number>`SUM(${transactions.amount})`;
 
   const spendRowsRaw = await db
     .select({
       categoryGroup: categories.groupType,
       accountId: transactions.accountId,
       accountName: accounts.name,
-      spend: debitSum
+      spend: spendSum
     })
     .from(transactions)
     .innerJoin(categories, eq(transactions.categoryId, categories.id))

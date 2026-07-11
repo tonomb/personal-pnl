@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import * as schema from "@pnl/types";
 import {
   accounts,
+  analyzeCardOptimization,
   cardBenefits,
   categories,
   columnMappings,
@@ -224,6 +225,22 @@ describe("getCashflowTrend", () => {
     expect(result.months).toEqual([{ month: "2024-03", income: 5000, expenses: 0, net: 5000 }]);
   });
 
+  it("counts a CREDIT-typed charge in an expense category as expense (LAG-46)", async () => {
+    const db = makeDb();
+    const [dining] = await db.insert(categories).values({ name: "Dining", groupType: "VARIABLE" }).returning();
+
+    await db
+      .insert(transactions)
+      .values([
+        baseTx({ id: "d-credit", date: "2024-03-01", amount: 170, type: "CREDIT", categoryId: dining!.id }),
+        baseTx({ id: "d-debit", date: "2024-03-02", amount: 195, type: "DEBIT", categoryId: dining!.id })
+      ]);
+
+    const result = await getCashflowTrend(db, 1, new Date(Date.UTC(2024, 2, 15)));
+
+    expect(result.months).toEqual([{ month: "2024-03", income: 0, expenses: 365, net: -365 }]);
+  });
+
   it("clamps requested months to [1, 24]", async () => {
     const db = makeDb();
     const result = await getCashflowTrend(db, 999, new Date(Date.UTC(2024, 2, 15)));
@@ -257,5 +274,25 @@ describe("getCategoryList", () => {
     expect(result.data_quality.uncategorized_count).toBe(1);
     expect(result.data_quality.uncategorized_pct).toBe(50);
     expect(result.data_quality.warning).toBe(true);
+  });
+});
+
+describe("analyzeCardOptimization", () => {
+  it("counts CREDIT-typed charges in an expense category toward spend (LAG-46)", async () => {
+    const db = makeDb();
+    const [dining] = await db.insert(categories).values({ name: "Dining", groupType: "VARIABLE" }).returning();
+
+    await db
+      .insert(transactions)
+      .values([
+        baseTx({ id: "d-credit", date: "2024-03-01", amount: 170, type: "CREDIT", categoryId: dining!.id }),
+        baseTx({ id: "d-debit", date: "2024-03-02", amount: 195, type: "DEBIT", categoryId: dining!.id })
+      ]);
+
+    const result = await analyzeCardOptimization(db, "2024-03", "2024-03");
+
+    const variable = result.category_groups.find((g) => g.category_group === "VARIABLE")!;
+    expect(variable.total_spend).toBe(365);
+    expect(variable.by_account.find((a) => a.account_id === TEST_ACCOUNT_ID)!.spend).toBe(365);
   });
 });

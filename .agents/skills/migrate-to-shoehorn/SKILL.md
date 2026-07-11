@@ -42,7 +42,7 @@ it("gets user by id", () => {
   getUser({
     body: { id: "123" },
     headers: {},
-    cookies: {},
+    cookies: {}
     // ...fake all 20 properties
   });
 });
@@ -56,8 +56,8 @@ import { fromPartial } from "@total-typescript/shoehorn";
 it("gets user by id", () => {
   getUser(
     fromPartial({
-      body: { id: "123" },
-    }),
+      body: { id: "123" }
+    })
   );
 });
 ```

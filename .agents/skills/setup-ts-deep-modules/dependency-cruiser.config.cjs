@@ -28,11 +28,10 @@ module.exports = {
   forbidden: [
     {
       name: "entrypoint-boundary-from-app",
-      comment:
-        "App/root code may import a package's entry points (its root files), but nothing inside its subfolders.",
+      comment: "App/root code may import a package's entry points (its root files), but nothing inside its subfolders.",
       severity: "error",
       from: { pathNot: `^${R}/` }, // importer is NOT inside any package
-      to: { path: PACKAGE_INTERNALS },
+      to: { path: PACKAGE_INTERNALS }
     },
     {
       name: "entrypoint-boundary-across-packages",
@@ -43,8 +42,8 @@ module.exports = {
       from: { path: `^${R}/([^/]+)/`, pathNot: `^${R}/[^/]+/tests/` },
       to: {
         path: PACKAGE_INTERNALS,
-        pathNot: `^${R}/$1/`, // same package → intra-package freedom
-      },
+        pathNot: `^${R}/$1/` // same package → intra-package freedom
+      }
     },
     {
       name: "tests-through-entrypoints",
@@ -54,24 +53,23 @@ module.exports = {
       from: { path: `^${R}/([^/]+)/tests/` }, // a test file, in package $1
       to: {
         path: PACKAGE_INTERNALS,
-        pathNot: `^${R}/$1/tests/`, // own tests/ fixtures → allowed
-      },
+        pathNot: `^${R}/$1/tests/` // own tests/ fixtures → allowed
+      }
     },
     {
       name: "tests-folder-is-private",
-      comment:
-        "A package's tests/ folder is reachable only from tests — nothing else may import fixtures.",
+      comment: "A package's tests/ folder is reachable only from tests — nothing else may import fixtures.",
       severity: "error",
       from: { pathNot: `^${R}/[^/]+/tests/` }, // importer is not itself a test
-      to: { path: `^${R}/[^/]+/tests/` },
+      to: { path: `^${R}/[^/]+/tests/` }
     },
     {
       name: "no-circular",
       comment: "No dependency cycles. Scope to `^${R}/` if you want to allow cycles outside packages.",
       severity: "error",
       from: {},
-      to: { circular: true },
-    },
+      to: { circular: true }
+    }
 
     // --- Layering (optional, off by default) ----------------------------------
     // Interface-hiding controls HOW you import (through the entry points).
@@ -89,7 +87,7 @@ module.exports = {
     doNotFollow: { path: "node_modules" },
     tsConfig: { fileName: "tsconfig.json" },
     enhancedResolveOptions: {
-      extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
-    },
-  },
+      extensions: [".ts", ".tsx", ".js", ".jsx", ".json"]
+    }
+  }
 };

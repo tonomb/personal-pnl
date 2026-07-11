@@ -176,12 +176,28 @@ function BulkAssignBar({
 }) {
   const GROUPS = ["INCOME", "FIXED", "VARIABLE", "IGNORED"] as const;
 
+  const allCategories = useMemo(
+    () => [
+      ...(catData?.INCOME ?? []),
+      ...(catData?.FIXED ?? []),
+      ...(catData?.VARIABLE ?? []),
+      ...(catData?.IGNORED ?? [])
+    ],
+    [catData]
+  );
+
   return (
     <div className="flex flex-wrap items-center gap-2 py-1">
       <span className="shrink-0 text-sm text-muted-foreground">{selectedCount} selected</span>
       <Select value={value} onValueChange={(v) => onValueChange(v as string)}>
         <SelectTrigger className="w-52">
-          <SelectValue placeholder="Choose category…" />
+          <SelectValue placeholder="Choose category…">
+            {(selectedValue: string) => {
+              if (!selectedValue) return "Choose category…";
+              if (selectedValue === "__null__") return "None (remove category)";
+              return allCategories.find((c) => String(c.id) === selectedValue)?.name ?? selectedValue;
+            }}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="__null__">None (remove category)</SelectItem>

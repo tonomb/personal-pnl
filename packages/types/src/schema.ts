@@ -11,6 +11,7 @@ export const accounts = sqliteTable("accounts", {
   name: text("name").notNull(),
   institution: text("institution").notNull(),
   type: text("type", { enum: ["CHECKING", "SAVINGS", "CREDIT"] }).notNull(),
+  currency: text("currency").notNull().default("MXN"), // ISO 4217; every transaction inherits it (ADR-0003)
   last4: text("last4"),
   color: text("color").notNull().default("#3b82f6"),
   createdAt: text("created_at")
@@ -49,7 +50,11 @@ export const transactions = sqliteTable("transactions", {
   id: text("id").primaryKey(), // UUID
   date: text("date").notNull(), // YYYY-MM-DD
   description: text("description").notNull(),
-  amount: real("amount").notNull(), // always positive
+  // Positive integer minor units in the account's currency (ADR-0001).
+  // Direction is NOT encoded here — the category's groupType decides it (ADR-0002).
+  amountCents: integer("amount_cents").notNull(),
+  // Bank-reported direction, kept as provenance only; unreliable across
+  // statement formats and never used to decide P&L direction (ADR-0002).
   type: text("type", { enum: ["DEBIT", "CREDIT"] }).notNull(),
   categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
   accountId: text("account_id")
@@ -84,6 +89,26 @@ export const transactionTags = sqliteTable(
   (table) => [primaryKey({ columns: [table.transactionId, table.tagId] })]
 );
 
+// Single-row table (id = 1). Holds the user-chosen reporting currency (ADR-0003).
+export const settings = sqliteTable("settings", {
+  id: integer("id").primaryKey(),
+  baseCurrency: text("base_currency").notNull().default("MXN")
+});
+
+// Manual monthly conversion rates, keyed by currency pair so stored rates
+// survive a base-currency switch (ADR-0003). rate = base units per 1 unit of currency.
+export const fxRates = sqliteTable(
+  "fx_rates",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    month: text("month").notNull(), // YYYY-MM
+    baseCurrency: text("base_currency").notNull(),
+    currency: text("currency").notNull(),
+    rate: real("rate").notNull()
+  },
+  (table) => [unique("fx_rates_month_pair_unq").on(table.month, table.baseCurrency, table.currency)]
+);
+
 export const columnMappings = sqliteTable("column_mappings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   fileFingerprint: text("file_fingerprint").notNull().unique(),
@@ -98,6 +123,8 @@ export const columnMappings = sqliteTable("column_mappings", {
 // Zod schemas (derived from Drizzle)
 // ---------------------------------------------------------------------------
 
+export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/, "Currency must be a 3-letter ISO code");
+
 export const insertAccountSchema = createInsertSchema(accounts);
 export const selectAccountSchema = createSelectSchema(accounts);
 
@@ -105,6 +132,7 @@ export const createAccountInputSchema = z.object({
   name: z.string().trim().min(1, "Name required"),
   institution: z.string().trim().min(1, "Institution required"),
   type: z.enum(["CHECKING", "SAVINGS", "CREDIT"]),
+  currency: currencyCodeSchema.default("MXN"),
   last4: z
     .string()
     .regex(/^\d{4}$/, "Must be 4 digits")
@@ -121,6 +149,7 @@ export const updateAccountInputSchema = z.object({
   name: z.string().trim().min(1).optional(),
   institution: z.string().trim().min(1).optional(),
   type: z.enum(["CHECKING", "SAVINGS", "CREDIT"]).optional(),
+  currency: currencyCodeSchema.optional(),
   last4: z
     .string()
     .regex(/^\d{4}$/)
@@ -169,11 +198,27 @@ export const selectCategorySchema = createSelectSchema(categories);
 export const insertTransactionSchema = createInsertSchema(transactions);
 export const selectTransactionSchema = createSelectSchema(transactions);
 
-// accountId is omitted — the upload endpoint assigns it from the outer accountId field.
-export const transactionInputSchema = insertTransactionSchema.omit({ accountId: true }).extend({
+// Upload rows arrive in major units (`amount`); the server converts to
+// amountCents at the ingestion boundary (ADR-0001). accountId is omitted —
+// the upload endpoint assigns it from the outer accountId field.
+export const transactionInputSchema = insertTransactionSchema.omit({ accountId: true, amountCents: true }).extend({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
   amount: z.number().positive("Amount must be positive")
 });
+
+export type TransactionUpload = z.infer<typeof transactionInputSchema>;
+
+export const updateSettingsInputSchema = z.object({
+  baseCurrency: currencyCodeSchema
+});
+
+export const upsertFxRateInputSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/, "Month must be YYYY-MM"),
+  currency: currencyCodeSchema,
+  rate: z.number().positive("Rate must be positive")
+});
+
+export const deleteFxRateInputSchema = z.object({ id: z.number().int() });
 
 export const insertColumnMappingSchema = createInsertSchema(columnMappings);
 export const selectColumnMappingSchema = createSelectSchema(columnMappings);
@@ -310,6 +355,10 @@ export type NewCategory = typeof categories.$inferInsert;
 
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
+
+export type Settings = typeof settings.$inferSelect;
+export type FxRate = typeof fxRates.$inferSelect;
+export type NewFxRate = typeof fxRates.$inferInsert;
 
 export type ColumnMapping = typeof columnMappings.$inferSelect;
 export type NewColumnMapping = typeof columnMappings.$inferInsert;

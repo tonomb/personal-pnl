@@ -11,3 +11,7 @@ onlyBuiltDependenciesFile: node_modules/.pnpm-config/@pnpm/trusted-deps/allow.js
 onlyBuiltDependencies:
   - core-js-pure
   - unrs-resolver
+
+overrides:
+  "@types/react": 18.3.23
+  "@types/react-dom": 18.3.7

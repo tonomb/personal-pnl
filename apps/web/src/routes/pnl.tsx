@@ -238,7 +238,7 @@ function PnlPage() {
 
   function handleExport() {
     if (!report) return;
-    const csv = buildCsvContent(report, visibleMonths);
+    const csv = buildCsvContent(visibleMonths);
     const filename = `pnl-${focusedMonth ?? year}.csv`;
     triggerCsvDownload(csv, filename);
   }

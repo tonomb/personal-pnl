@@ -1,0 +1,15 @@
+export { batchChunked, chunks } from "./batch";
+export type { PnlDb } from "./client";
+export { FxRateMissingError, loadFxContext } from "./fx";
+export type { FxContext } from "./fx";
+export { fetchRollup } from "./rollup";
+export type { Rollup, RollupFilter } from "./rollup";
+export { computeKpiSummary, computeMonthlyPnl, computePnlReport } from "./pnl";
+export { getBudgetVariance, getCashflowTrend, getCategoryList, getFinancialHealthSnapshot } from "./advisor-tools";
+export { analyzeCardOptimization } from "./card-optimization";
+export { getSpendingByCategory, getTopMerchants, listTransactions, searchTransactions } from "./transactions-query";
+export { buildTagReport, findTagByName, getTagReportByName, listTagNames } from "./tags";
+export { getSettings, updateSettings } from "./settings";
+export { deleteFxRate, listFxRates, upsertFxRate } from "./fx-rates";
+export { insertTransactions } from "./ingest";
+export type { InsertTransactionsResult } from "./ingest";

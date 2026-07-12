@@ -30,6 +30,7 @@ const aTag = { id: "tag-1", name: "NY Trip", color: "#3B82F6", createdAt: "2026-
 
 const aReport: TagReport = {
   tag: aTag,
+  currency: "MXN",
   totalSpend: 1520,
   totalIncome: 175, // Salary 100 + Bonus 75 — unique so $175.00 only appears in KPI
   net: -1345,
@@ -45,6 +46,7 @@ const aReport: TagReport = {
       date: "2026-01-10",
       description: "Hotel Marriott",
       amount: 600,
+      currency: "MXN",
       type: "DEBIT",
       categoryId: 2,
       accountId: "test-account",
@@ -58,6 +60,7 @@ const aReport: TagReport = {
       date: "2026-01-12",
       description: "Dinner",
       amount: 920,
+      currency: "MXN",
       type: "DEBIT",
       categoryId: 3,
       accountId: "test-account",
@@ -71,6 +74,7 @@ const aReport: TagReport = {
       date: "2026-01-13",
       description: "Refund",
       amount: 100,
+      currency: "MXN",
       type: "CREDIT",
       categoryId: 1,
       accountId: "test-account",

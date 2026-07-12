@@ -40,14 +40,18 @@ type AccountFormState = {
   name: string;
   institution: string;
   type: "CHECKING" | "SAVINGS" | "CREDIT";
+  currency: string;
   last4: string;
   color: string;
 };
+
+const CURRENCY_OPTIONS = ["MXN", "USD", "EUR", "CAD", "GBP"];
 
 const DEFAULT_FORM: AccountFormState = {
   name: "",
   institution: "",
   type: "CREDIT",
+  currency: "MXN",
   last4: "",
   color: TAG_PRESET_COLORS[5]
 };
@@ -67,6 +71,7 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
           name: input.name,
           institution: input.institution,
           type: input.type as Account["type"],
+          currency: input.currency ?? "MXN",
           last4: input.last4 ?? null,
           color: input.color ?? TAG_PRESET_COLORS[5],
           createdAt: new Date().toISOString(),
@@ -97,6 +102,7 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
       name: form.name.trim(),
       institution: form.institution.trim(),
       type: form.type,
+      currency: form.currency,
       last4: form.last4.trim() || null,
       color: form.color
     });
@@ -147,6 +153,21 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
             onChange={(e) => setField("last4", e.target.value.replace(/\D/g, ""))}
           />
         </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Currency</label>
+          <Select value={form.currency} onValueChange={(v) => setField("currency", v ?? "MXN")}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CURRENCY_OPTIONS.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="space-y-1">
@@ -175,6 +196,7 @@ function EditAccountForm({ account, onDone }: { account: AccountWithBenefits; on
     name: account.name,
     institution: account.institution,
     type: account.type,
+    currency: account.currency,
     last4: account.last4 ?? "",
     color: account.color
   });
@@ -192,6 +214,7 @@ function EditAccountForm({ account, onDone }: { account: AccountWithBenefits; on
                 ...(input.name !== undefined && { name: input.name }),
                 ...(input.institution !== undefined && { institution: input.institution }),
                 ...(input.type !== undefined && { type: input.type as Account["type"] }),
+                ...(input.currency !== undefined && { currency: input.currency }),
                 ...(input.last4 !== undefined && { last4: input.last4 }),
                 ...(input.color !== undefined && { color: input.color })
               }
@@ -223,6 +246,7 @@ function EditAccountForm({ account, onDone }: { account: AccountWithBenefits; on
       name: form.name.trim(),
       institution: form.institution.trim(),
       type: form.type,
+      currency: form.currency,
       last4: form.last4.trim() || null,
       color: form.color
     });
@@ -272,6 +296,21 @@ function EditAccountForm({ account, onDone }: { account: AccountWithBenefits; on
             maxLength={4}
             onChange={(e) => setField("last4", e.target.value.replace(/\D/g, ""))}
           />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Currency</label>
+          <Select value={form.currency} onValueChange={(v) => setField("currency", v ?? "MXN")}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CURRENCY_OPTIONS.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -449,11 +488,11 @@ function BenefitsTable({ account }: { account: AccountWithBenefits }) {
 
   function commitAdd() {
     const rate = parseFloat(editState.rewardRate) / 100;
-    if (!editState.rewardType.trim() || isNaN(rate) || rate < 0 || rate > 1) return;
+    if (isNaN(rate) || rate < 0 || rate > 1) return;
     addMutation.mutate({
       accountId: account.id,
       categoryGroup: editState.categoryGroup,
-      rewardType: editState.rewardType.trim(),
+      rewardType: editState.rewardType,
       rewardRate: rate
     });
   }

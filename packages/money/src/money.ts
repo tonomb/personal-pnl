@@ -2,39 +2,42 @@ import Decimal from "decimal.js";
 
 Decimal.set({ rounding: Decimal.ROUND_HALF_UP });
 
-export type Numeric = number | Decimal;
+/**
+ * Money moves through the system in two representations (ADR-0001):
+ * - cents: positive integer minor units — the storage and aggregation form
+ * - amount: major units with at most 2dp — the only form the API and UI see
+ *
+ * decimal.js is confined to this module; everything downstream works with
+ * exact integer cents or already-rounded amounts.
+ */
 
-export function add(a: Numeric, b: Numeric): Decimal {
-  return new Decimal(a).add(new Decimal(b));
+/** Parse a major-unit amount (number or string) into integer cents. */
+export function toCents(amount: number | string): number {
+  return new Decimal(amount).mul(100).toDecimalPlaces(0).toNumber();
 }
 
-export function subtract(a: Numeric, b: Numeric): Decimal {
-  return new Decimal(a).sub(new Decimal(b));
+/** Convert integer cents back to a major-unit amount (≤2dp). */
+export function centsToAmount(cents: number): number {
+  return new Decimal(cents).div(100).toDecimalPlaces(2).toNumber();
 }
 
-export function multiply(a: Numeric, b: Numeric): Decimal {
-  return new Decimal(a).mul(new Decimal(b));
+/** Round a major-unit amount to 2dp (HALF_UP). */
+export function round2(n: number): number {
+  return new Decimal(n).toDecimalPlaces(2).toNumber();
 }
 
-export function divide(a: Numeric, b: Numeric): Decimal {
-  return new Decimal(a).div(new Decimal(b));
+/** Round a rate/ratio to 4dp (HALF_UP) — rates are not money (ADR: D7). */
+export function round4(n: number): number {
+  return new Decimal(n).toDecimalPlaces(4).toNumber();
 }
 
-export function safeDivide(numerator: Numeric, denominator: Numeric): Decimal | null {
-  const d = new Decimal(denominator);
-  if (d.isZero()) return null;
-  return new Decimal(numerator).div(d);
+/** numerator/denominator rounded to 4dp, or null when the denominator is 0. */
+export function ratioOrNull(numerator: number, denominator: number): number | null {
+  if (denominator === 0) return null;
+  return round4(numerator / denominator);
 }
 
-export function toStorable(d: Decimal): number {
-  return d.toDecimalPlaces(2).toNumber();
-}
-
-export function toDisplay(d: Decimal): string {
-  return new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "MXN",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(d.toNumber());
+/** Multiply integer cents by a rate (FX or reward rate), back to integer cents. */
+export function multiplyCentsByRate(cents: number, rate: number): number {
+  return new Decimal(cents).mul(rate).toDecimalPlaces(0).toNumber();
 }

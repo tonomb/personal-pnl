@@ -1,88 +1,99 @@
-import Decimal from "decimal.js";
 import { describe, expect, it } from "vitest";
-import { add, divide, multiply, safeDivide, subtract, toDisplay, toStorable } from "./money";
+import { centsToAmount, multiplyCentsByRate, ratioOrNull, round2, round4, toCents } from "./money";
 
-describe("add", () => {
-  it("avoids float precision errors", () => {
-    expect(add(0.1, 0.2).equals(new Decimal("0.3"))).toBe(true);
+describe("toCents", () => {
+  it("converts a major-unit amount to integer cents", () => {
+    expect(toCents(12.34)).toBe(1234);
+    expect(toCents(0)).toBe(0);
   });
 
-  it("accepts Decimal instances", () => {
-    expect(add(new Decimal("1.5"), new Decimal("2.5")).equals(new Decimal("4"))).toBe(true);
+  it("is exact where naive float multiplication drifts", () => {
+    // 1.005 * 100 === 100.49999999999999 → Math.round gives 100
+    expect(Math.round(1.005 * 100)).toBe(100);
+    expect(toCents(1.005)).toBe(101);
   });
-});
 
-describe("subtract", () => {
-  it("subtracts two values", () => {
-    expect(subtract(10, 3.5).equals(new Decimal("6.5"))).toBe(true);
+  it("parses string amounts (CSV values) exactly", () => {
+    expect(toCents("1234.56")).toBe(123456);
+    expect(toCents("0.07")).toBe(7);
   });
-});
 
-describe("multiply", () => {
-  it("multiplies two values", () => {
-    expect(multiply(2.5, 4).equals(new Decimal("10"))).toBe(true);
-  });
-});
-
-describe("divide", () => {
-  it("divides two values", () => {
-    expect(divide(10, 4).equals(new Decimal("2.5"))).toBe(true);
+  it("rounds sub-cent precision half-up", () => {
+    expect(toCents(1.234)).toBe(123);
+    expect(toCents(1.235)).toBe(124);
   });
 });
 
-describe("safeDivide", () => {
-  it("divides normally when denominator is non-zero", () => {
-    expect(safeDivide(100, 4)?.equals(new Decimal("25"))).toBe(true);
+describe("centsToAmount", () => {
+  it("converts integer cents back to a 2dp amount", () => {
+    expect(centsToAmount(123456)).toBe(1234.56);
+    expect(centsToAmount(7)).toBe(0.07);
+    expect(centsToAmount(0)).toBe(0);
   });
 
-  it("returns null when denominator is zero", () => {
-    expect(safeDivide(100, 0)).toBeNull();
-  });
-
-  it("returns null when denominator is a zero Decimal", () => {
-    expect(safeDivide(100, new Decimal(0))).toBeNull();
-  });
-});
-
-describe("toStorable", () => {
-  it("returns a plain number rounded to 2 decimal places", () => {
-    const result = toStorable(new Decimal("0.1").add("0.2"));
-    expect(result).toBe(0.3);
-    expect(typeof result).toBe("number");
-  });
-
-  it("rounds to 2 decimal places", () => {
-    expect(toStorable(new Decimal("1.005"))).toBe(1.01);
-  });
-});
-
-describe("toDisplay", () => {
-  it("formats as MXN currency string", () => {
-    const result = toDisplay(new Decimal("1234.56"));
-    expect(result).toContain("1,234");
-    expect(result).toContain("56");
-  });
-});
-
-describe("regression: float drift", () => {
-  it("is exact when summing 0.1 one hundred times where raw float drifts", () => {
-    let raw = 0;
-    let d = new Decimal(0);
-    for (let i = 0; i < 100; i++) {
-      raw += 0.1;
-      d = add(d, 0.1);
+  it("round-trips with toCents", () => {
+    for (const amount of [0.01, 0.1, 0.3, 19.99, 1234.56, 99999.99]) {
+      expect(centsToAmount(toCents(amount))).toBe(amount);
     }
-    expect(raw).not.toBe(10);
-    expect(toStorable(d)).toBe(10);
   });
+});
 
-  it("is exact for canonical 0.1 + 0.2 where raw float drifts", () => {
-    expect(0.1 + 0.2).not.toBe(0.3);
-    expect(toStorable(add(0.1, 0.2))).toBe(0.3);
+describe("round2", () => {
+  it("rounds to 2 decimal places half-up", () => {
+    expect(round2(1.005)).toBe(1.01);
+    expect(round2(0.1 + 0.2)).toBe(0.3);
   });
 
   it("rounds half-up away from zero on negatives (vs Math.round which rounds toward zero)", () => {
     expect(Math.round(-0.005 * 100) / 100).toBe(-0);
-    expect(toStorable(new Decimal("-0.005"))).toBe(-0.01);
+    expect(round2(-0.005)).toBe(-0.01);
+  });
+});
+
+describe("round4", () => {
+  it("rounds rates to 4 decimal places", () => {
+    expect(round4(0.75649)).toBe(0.7565);
+    expect(round4(1 / 3)).toBe(0.3333);
+  });
+});
+
+describe("ratioOrNull", () => {
+  it("returns the 4dp ratio when the denominator is non-zero", () => {
+    expect(ratioOrNull(1500, 2000)).toBe(0.75);
+    expect(ratioOrNull(1, 3)).toBe(0.3333);
+  });
+
+  it("returns null when the denominator is zero", () => {
+    expect(ratioOrNull(100, 0)).toBeNull();
+  });
+});
+
+describe("multiplyCentsByRate", () => {
+  it("applies an FX rate to cents and returns integer cents", () => {
+    // 100.00 USD at 17.25 MXN/USD = 1725.00 MXN
+    expect(multiplyCentsByRate(10000, 17.25)).toBe(172500);
+  });
+
+  it("applies a reward rate and rounds half-up", () => {
+    // 3% of $10.25 = 30.75 cents → 31
+    expect(multiplyCentsByRate(1025, 0.03)).toBe(31);
+  });
+
+  it("is exact where float multiplication drifts", () => {
+    // 8228 * 0.145 = 1193.0599999999999 in floats
+    expect(multiplyCentsByRate(8228, 0.145)).toBe(1193);
+  });
+});
+
+describe("regression: aggregation is exact in cents", () => {
+  it("summing 0.1 one hundred times drifts in floats but not in cents", () => {
+    let raw = 0;
+    let cents = 0;
+    for (let i = 0; i < 100; i++) {
+      raw += 0.1;
+      cents += toCents(0.1);
+    }
+    expect(raw).not.toBe(10);
+    expect(centsToAmount(cents)).toBe(10);
   });
 });

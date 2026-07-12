@@ -14,7 +14,7 @@ import { generateFingerprint, generateTransactionId, normalizeDate, parseAmount,
 import { getSheetNames, xlsxToCsvString } from "@/lib/xlsx";
 import { trpc } from "@/lib/trpc";
 
-import type { NewColumnMapping, NewTransaction } from "@pnl/types";
+import type { NewColumnMapping, TransactionUpload } from "@pnl/types";
 
 export const Route = createFileRoute("/upload")({
   component: UploadPage
@@ -27,7 +27,7 @@ export const Route = createFileRoute("/upload")({
 type FileStatus =
   | { phase: "parsing" }
   | { phase: "mapping"; headers: string[]; rawRows: Array<Record<string, string>>; fingerprint: string }
-  | { phase: "ready"; transactions: NewTransaction[]; mapping: NewColumnMapping }
+  | { phase: "ready"; transactions: TransactionUpload[]; mapping: NewColumnMapping }
   | { phase: "uploading" }
   | { phase: "done"; inserted: number; duplicates: number }
   | { phase: "error"; message: string };
@@ -59,9 +59,9 @@ function buildTransactions(
   mapping: MappingState,
   sourceFile: string,
   accountId: string
-): { transactions: NewTransaction[]; badDateRows: string[] } {
+): { transactions: TransactionUpload[]; badDateRows: string[] } {
   const seen = new Set<string>();
-  const result: NewTransaction[] = [];
+  const result: TransactionUpload[] = [];
   const badDateRows: string[] = [];
 
   for (const row of rawRows) {

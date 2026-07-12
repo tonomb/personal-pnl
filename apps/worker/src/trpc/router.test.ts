@@ -10,10 +10,13 @@ import {
   categories,
   columnMappings,
   createTagInputSchema,
+  fxRates,
+  settings,
   tags,
   transactionInputSchema,
   transactions,
-  transactionTags
+  transactionTags,
+  updateSettingsInputSchema
 } from "@pnl/types";
 
 import { appRouter } from "./router";
@@ -24,6 +27,11 @@ function makeDb() {
 
 function makeCaller() {
   return appRouter.createCaller({ db: makeDb() }, { onError: () => {} });
+}
+
+// Test fixtures are written in major units; storage is integer cents (ADR-0001).
+function cents(amount: number): number {
+  return Math.round(amount * 100);
 }
 
 // Stable account ID used across all test transaction fixtures.
@@ -38,6 +46,8 @@ beforeEach(async () => {
   await db.delete(categories);
   await db.delete(cardBenefits);
   await db.delete(accounts);
+  await db.delete(fxRates);
+  await db.delete(settings);
   // Seed the default test account so transaction inserts satisfy the NOT NULL FK.
   await db.insert(accounts).values({
     id: TEST_ACCOUNT_ID,
@@ -188,7 +198,7 @@ describe("transactions.categorize", () => {
     id: "tx-cat-1",
     date: "2024-01-15",
     description: "Coffee",
-    amount: 4.5,
+    amountCents: cents(4.5),
     type: "DEBIT" as const,
     accountId: TEST_ACCOUNT_ID,
     sourceFile: "bank.csv",
@@ -237,7 +247,7 @@ describe("transactions.list", () => {
     id: "tx-1",
     date: "2024-01-15",
     description: "Coffee",
-    amount: 4.5,
+    amountCents: cents(4.5),
     type: "DEBIT" as const,
     accountId: TEST_ACCOUNT_ID,
     sourceFile: "bank.csv",
@@ -248,7 +258,7 @@ describe("transactions.list", () => {
     id: "tx-2",
     date: "2024-02-10",
     description: "Salary",
-    amount: 1000,
+    amountCents: cents(1000),
     type: "CREDIT" as const,
     accountId: TEST_ACCOUNT_ID,
     sourceFile: "bank.csv",
@@ -334,7 +344,7 @@ describe("transactions.list", () => {
       id: `tx-p-${i}`,
       date: `2024-03-0${i + 1}`,
       description: `d${i}`,
-      amount: 1 + i,
+      amountCents: cents(1) + i,
       type: "DEBIT" as const,
       accountId: TEST_ACCOUNT_ID,
       sourceFile: "bank.csv",
@@ -476,7 +486,7 @@ describe("categories.delete", () => {
       id: "tx-d-1",
       date: "2024-01-01",
       description: "x",
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT",
       accountId: TEST_ACCOUNT_ID,
       sourceFile: "bank.csv",
@@ -499,12 +509,18 @@ describe("categories.delete", () => {
 
 describe("transactions.grouped", () => {
   const baseTx = (
-    overrides: Partial<{ id: string; description: string; amount: number; date: string; categoryId: number | null }>
+    overrides: Partial<{
+      id: string;
+      description: string;
+      amountCents: number;
+      date: string;
+      categoryId: number | null;
+    }>
   ) => ({
     id: "tx-g-1",
     date: "2024-01-01",
     description: "Uber",
-    amount: 10,
+    amountCents: cents(10),
     type: "DEBIT" as const,
     accountId: TEST_ACCOUNT_ID,
     sourceFile: "bank.csv",
@@ -516,22 +532,22 @@ describe("transactions.grouped", () => {
 
   it("returns empty array when no transactions exist", async () => {
     const result = await makeCaller().transactions.grouped({});
-    expect(result).toEqual([]);
+    expect(result.rows).toEqual([]);
   });
 
   it("groups by description with count and total amount", async () => {
     await makeDb()
       .insert(transactions)
       .values([
-        baseTx({ id: "g-1", description: "Uber", amount: 10 }),
-        baseTx({ id: "g-2", description: "Uber", amount: 15 }),
-        baseTx({ id: "g-3", description: "Coffee", amount: 4 })
+        baseTx({ id: "g-1", description: "Uber", amountCents: cents(10) }),
+        baseTx({ id: "g-2", description: "Uber", amountCents: cents(15) }),
+        baseTx({ id: "g-3", description: "Coffee", amountCents: cents(4) })
       ]);
 
     const result = await makeCaller().transactions.grouped({});
 
-    const uber = result.find((g) => g.description === "Uber");
-    const coffee = result.find((g) => g.description === "Coffee");
+    const uber = result.rows.find((g) => g.description === "Uber");
+    const coffee = result.rows.find((g) => g.description === "Coffee");
     expect(uber).toEqual(expect.objectContaining({ count: 2, totalAmount: 25 }));
     expect(coffee).toEqual(expect.objectContaining({ count: 1, totalAmount: 4 }));
   });
@@ -555,7 +571,7 @@ describe("transactions.grouped", () => {
       ]);
 
     const result = await makeCaller().transactions.grouped({});
-    const uber = result.find((g) => g.description === "Uber")!;
+    const uber = result.rows.find((g) => g.description === "Uber")!;
 
     expect(uber.categoryId).toBe(transport!.id);
     expect(uber.categoryName).toBe("Transport");
@@ -569,7 +585,7 @@ describe("transactions.grouped", () => {
       .values([baseTx({ id: "n-1", description: "Mystery", categoryId: null })]);
 
     const result = await makeCaller().transactions.grouped({});
-    const mystery = result.find((g) => g.description === "Mystery")!;
+    const mystery = result.rows.find((g) => g.description === "Mystery")!;
 
     expect(mystery.categoryId).toBeNull();
     expect(mystery.categoryName).toBeNull();
@@ -587,7 +603,7 @@ describe("transactions.grouped", () => {
       ]);
 
     const result = await makeCaller().transactions.grouped({});
-    const ambig = result.find((g) => g.description === "Ambig")!;
+    const ambig = result.rows.find((g) => g.description === "Ambig")!;
 
     expect(ambig.categoryId).toBeNull();
   });
@@ -596,12 +612,12 @@ describe("transactions.grouped", () => {
     await makeDb()
       .insert(transactions)
       .values([
-        baseTx({ id: "f-1", description: "Uber", date: "2024-01-05", amount: 10 }),
-        baseTx({ id: "f-2", description: "Uber", date: "2024-02-05", amount: 20 })
+        baseTx({ id: "f-1", description: "Uber", date: "2024-01-05", amountCents: cents(10) }),
+        baseTx({ id: "f-2", description: "Uber", date: "2024-02-05", amountCents: cents(20) })
       ]);
 
     const result = await makeCaller().transactions.grouped({ month: "2024-01" });
-    const uber = result.find((g) => g.description === "Uber")!;
+    const uber = result.rows.find((g) => g.description === "Uber")!;
 
     expect(uber.count).toBe(1);
     expect(uber.totalAmount).toBe(10);
@@ -619,8 +635,8 @@ describe("transactions.grouped", () => {
 
     const result = await makeCaller().transactions.grouped({ uncategorized: true });
 
-    expect(result).toHaveLength(1);
-    expect(result[0]!.description).toBe("Mystery");
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]!.description).toBe("Mystery");
   });
 
   it("filters grouped results by categoryId", async () => {
@@ -636,8 +652,8 @@ describe("transactions.grouped", () => {
 
     const result = await makeCaller().transactions.grouped({ categoryId: food!.id });
 
-    expect(result).toHaveLength(1);
-    expect(result[0]!.description).toBe("Coffee");
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]!.description).toBe("Coffee");
   });
 
   it("ignores uncategorized transactions when computing most-common", async () => {
@@ -652,7 +668,7 @@ describe("transactions.grouped", () => {
       ]);
 
     const result = await makeCaller().transactions.grouped({});
-    const shop = result.find((g) => g.description === "Shop")!;
+    const shop = result.rows.find((g) => g.description === "Shop")!;
 
     expect(shop.categoryId).toBe(food!.id);
   });
@@ -665,7 +681,7 @@ describe("transactions.grouped", () => {
 function makePnlTx(overrides: {
   id: string;
   date: string;
-  amount: number;
+  amountCents: number;
   type: "CREDIT" | "DEBIT";
   categoryId?: number | null;
 }) {
@@ -700,7 +716,9 @@ describe("pnl.getReport", () => {
     const [cat] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
     await db
       .insert(transactions)
-      .values(makePnlTx({ id: "r-1", date: "2024-01-15", amount: 1000, type: "CREDIT", categoryId: cat!.id }));
+      .values(
+        makePnlTx({ id: "r-1", date: "2024-01-15", amountCents: cents(1000), type: "CREDIT", categoryId: cat!.id })
+      );
 
     const result = await makeCaller().pnl.getReport({ year: 2024 });
     expect(result.months).toHaveLength(1);
@@ -717,7 +735,9 @@ describe("pnl.getReport", () => {
     const [cat] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
     await db
       .insert(transactions)
-      .values(makePnlTx({ id: "r-2", date: "2024-01-05", amount: 500, type: "DEBIT", categoryId: cat!.id }));
+      .values(
+        makePnlTx({ id: "r-2", date: "2024-01-05", amountCents: cents(500), type: "DEBIT", categoryId: cat!.id })
+      );
 
     const result = await makeCaller().pnl.getReport({ year: 2024 });
     expect(result.months[0]!.fixed.total).toBe(500);
@@ -730,7 +750,9 @@ describe("pnl.getReport", () => {
     const [cat] = await db.insert(categories).values({ name: "Groceries", groupType: "VARIABLE" }).returning();
     await db
       .insert(transactions)
-      .values(makePnlTx({ id: "r-3", date: "2024-01-10", amount: 200, type: "DEBIT", categoryId: cat!.id }));
+      .values(
+        makePnlTx({ id: "r-3", date: "2024-01-10", amountCents: cents(200), type: "DEBIT", categoryId: cat!.id })
+      );
 
     const result = await makeCaller().pnl.getReport({ year: 2024 });
     expect(result.months[0]!.variable.total).toBe(200);
@@ -747,8 +769,8 @@ describe("pnl.getReport", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "r-lag46a", date: "2024-01-10", amount: 170, type: "CREDIT", categoryId: cat!.id }),
-        makePnlTx({ id: "r-lag46b", date: "2024-01-11", amount: 195, type: "DEBIT", categoryId: cat!.id })
+        makePnlTx({ id: "r-lag46a", date: "2024-01-10", amountCents: cents(170), type: "CREDIT", categoryId: cat!.id }),
+        makePnlTx({ id: "r-lag46b", date: "2024-01-11", amountCents: cents(195), type: "DEBIT", categoryId: cat!.id })
       ]);
 
     const result = await makeCaller().pnl.getReport({ year: 2024 });
@@ -764,8 +786,8 @@ describe("pnl.getReport", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "r-4a", date: "2024-01-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "r-4b", date: "2024-01-01", amount: 500, type: "DEBIT", categoryId: ign!.id })
+        makePnlTx({ id: "r-4a", date: "2024-01-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "r-4b", date: "2024-01-01", amountCents: cents(500), type: "DEBIT", categoryId: ign!.id })
       ]);
 
     const result = await makeCaller().pnl.getReport({ year: 2024 });
@@ -785,9 +807,9 @@ describe("pnl.getReport", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "r-5a", date: "2024-01-01", amount: 1000, type: "CREDIT", categoryId: cat!.id }),
-        makePnlTx({ id: "r-5b", date: "2024-01-05", amount: 50, type: "DEBIT", categoryId: null }),
-        makePnlTx({ id: "r-5c", date: "2024-01-15", amount: 30, type: "DEBIT", categoryId: null })
+        makePnlTx({ id: "r-5a", date: "2024-01-01", amountCents: cents(1000), type: "CREDIT", categoryId: cat!.id }),
+        makePnlTx({ id: "r-5b", date: "2024-01-05", amountCents: cents(50), type: "DEBIT", categoryId: null }),
+        makePnlTx({ id: "r-5c", date: "2024-01-15", amountCents: cents(30), type: "DEBIT", categoryId: null })
       ]);
 
     const result = await makeCaller().pnl.getReport({ year: 2024 });
@@ -804,9 +826,9 @@ describe("pnl.getReport", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "r-6a", date: "2024-01-01", amount: 3000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "r-6b", date: "2024-01-01", amount: 1000, type: "DEBIT", categoryId: fix!.id }),
-        makePnlTx({ id: "r-6c", date: "2024-01-01", amount: 500, type: "DEBIT", categoryId: vrb!.id })
+        makePnlTx({ id: "r-6a", date: "2024-01-01", amountCents: cents(3000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "r-6b", date: "2024-01-01", amountCents: cents(1000), type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "r-6c", date: "2024-01-01", amountCents: cents(500), type: "DEBIT", categoryId: vrb!.id })
       ]);
 
     const result = await makeCaller().pnl.getReport({ year: 2024 });
@@ -824,7 +846,9 @@ describe("pnl.getReport", () => {
     const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
     await db
       .insert(transactions)
-      .values(makePnlTx({ id: "r-7", date: "2024-01-01", amount: 500, type: "DEBIT", categoryId: fix!.id }));
+      .values(
+        makePnlTx({ id: "r-7", date: "2024-01-01", amountCents: cents(500), type: "DEBIT", categoryId: fix!.id })
+      );
 
     const result = await makeCaller().pnl.getReport({ year: 2024 });
     expect(result.months[0]!.savingsRate).toBeNull();
@@ -837,10 +861,10 @@ describe("pnl.getReport", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "r-8a", date: "2024-01-01", amount: 2000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "r-8b", date: "2024-01-01", amount: 800, type: "DEBIT", categoryId: fix!.id }),
-        makePnlTx({ id: "r-8c", date: "2024-02-01", amount: 2000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "r-8d", date: "2024-02-01", amount: 800, type: "DEBIT", categoryId: fix!.id })
+        makePnlTx({ id: "r-8a", date: "2024-01-01", amountCents: cents(2000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "r-8b", date: "2024-01-01", amountCents: cents(800), type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "r-8c", date: "2024-02-01", amountCents: cents(2000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "r-8d", date: "2024-02-01", amountCents: cents(800), type: "DEBIT", categoryId: fix!.id })
       ]);
 
     const result = await makeCaller().pnl.getReport({ year: 2024 });
@@ -865,9 +889,9 @@ describe("pnl.getMonth", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "m-1a", date: "2024-03-10", amount: 3000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "m-1b", date: "2024-03-10", amount: 1000, type: "DEBIT", categoryId: fix!.id }),
-        makePnlTx({ id: "m-1c", date: "2024-04-01", amount: 999, type: "CREDIT", categoryId: inc!.id })
+        makePnlTx({ id: "m-1a", date: "2024-03-10", amountCents: cents(3000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "m-1b", date: "2024-03-10", amountCents: cents(1000), type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "m-1c", date: "2024-04-01", amountCents: cents(999), type: "CREDIT", categoryId: inc!.id })
       ]);
 
     const result = await makeCaller().pnl.getMonth({ month: "2024-03" });
@@ -875,7 +899,7 @@ describe("pnl.getMonth", () => {
     expect(result.income.total).toBe(3000);
     expect(result.fixed.total).toBe(1000);
     expect(result.net).toBe(2000);
-    expect(result.savingsRate).toBe(0.67); // Math.round(2000/3000 * 100) / 100
+    expect(result.savingsRate).toBe(0.6667); // 2000/3000 at 4dp (D7)
   });
 
   it("returns zero totals and null savingsRate for a month with no transactions", async () => {
@@ -901,8 +925,8 @@ describe("pnl.getKpis", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "k-1a", date: "2024-03-01", amount: 3000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-1b", date: "2024-03-01", amount: 1000, type: "DEBIT", categoryId: fix!.id })
+        makePnlTx({ id: "k-1a", date: "2024-03-01", amountCents: cents(3000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-1b", date: "2024-03-01", amountCents: cents(1000), type: "DEBIT", categoryId: fix!.id })
       ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
@@ -916,7 +940,9 @@ describe("pnl.getKpis", () => {
     const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
     await db
       .insert(transactions)
-      .values([makePnlTx({ id: "k-2a", date: "2024-03-01", amount: 500, type: "DEBIT", categoryId: fix!.id })]);
+      .values([
+        makePnlTx({ id: "k-2a", date: "2024-03-01", amountCents: cents(500), type: "DEBIT", categoryId: fix!.id })
+      ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
 
@@ -931,8 +957,8 @@ describe("pnl.getKpis", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "k-3a", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-3b", date: "2024-03-01", amount: 1000, type: "DEBIT", categoryId: fix!.id })
+        makePnlTx({ id: "k-3a", date: "2024-03-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-3b", date: "2024-03-01", amountCents: cents(1000), type: "DEBIT", categoryId: fix!.id })
       ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
@@ -949,8 +975,8 @@ describe("pnl.getKpis", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "k-4a", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-4b", date: "2024-03-01", amount: 200, type: "DEBIT", categoryId: fix!.id })
+        makePnlTx({ id: "k-4a", date: "2024-03-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-4b", date: "2024-03-01", amountCents: cents(200), type: "DEBIT", categoryId: fix!.id })
       ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
@@ -966,8 +992,8 @@ describe("pnl.getKpis", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "k-5a", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-5b", date: "2024-03-01", amount: 850, type: "DEBIT", categoryId: fix!.id })
+        makePnlTx({ id: "k-5a", date: "2024-03-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-5b", date: "2024-03-01", amountCents: cents(850), type: "DEBIT", categoryId: fix!.id })
       ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
@@ -983,8 +1009,8 @@ describe("pnl.getKpis", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "k-6a", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-6b", date: "2024-03-01", amount: 950, type: "DEBIT", categoryId: fix!.id })
+        makePnlTx({ id: "k-6a", date: "2024-03-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-6b", date: "2024-03-01", amountCents: cents(950), type: "DEBIT", categoryId: fix!.id })
       ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
@@ -997,7 +1023,9 @@ describe("pnl.getKpis", () => {
     const [fix] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
     await db
       .insert(transactions)
-      .values([makePnlTx({ id: "k-7a", date: "2024-03-01", amount: 500, type: "DEBIT", categoryId: fix!.id })]);
+      .values([
+        makePnlTx({ id: "k-7a", date: "2024-03-01", amountCents: cents(500), type: "DEBIT", categoryId: fix!.id })
+      ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
 
@@ -1012,8 +1040,8 @@ describe("pnl.getKpis", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "k-8a", date: "2024-03-01", amount: 1200, type: "DEBIT", categoryId: fix!.id }),
-        makePnlTx({ id: "k-8b", date: "2024-03-01", amount: 300, type: "DEBIT", categoryId: vrb!.id })
+        makePnlTx({ id: "k-8a", date: "2024-03-01", amountCents: cents(1200), type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "k-8b", date: "2024-03-01", amountCents: cents(300), type: "DEBIT", categoryId: vrb!.id })
       ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
@@ -1026,7 +1054,9 @@ describe("pnl.getKpis", () => {
     const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
     await db
       .insert(transactions)
-      .values([makePnlTx({ id: "k-9a", date: "2024-03-01", amount: 2000, type: "CREDIT", categoryId: inc!.id })]);
+      .values([
+        makePnlTx({ id: "k-9a", date: "2024-03-01", amountCents: cents(2000), type: "CREDIT", categoryId: inc!.id })
+      ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
 
@@ -1041,10 +1071,10 @@ describe("pnl.getKpis", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "k-10a", date: "2024-02-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-10b", date: "2024-02-01", amount: 500, type: "DEBIT", categoryId: fix!.id }),
-        makePnlTx({ id: "k-10c", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-10d", date: "2024-03-01", amount: 200, type: "DEBIT", categoryId: fix!.id })
+        makePnlTx({ id: "k-10a", date: "2024-02-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-10b", date: "2024-02-01", amountCents: cents(500), type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "k-10c", date: "2024-03-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-10d", date: "2024-03-01", amountCents: cents(200), type: "DEBIT", categoryId: fix!.id })
       ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
@@ -1061,10 +1091,10 @@ describe("pnl.getKpis", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "k-11a", date: "2024-02-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-11b", date: "2024-02-01", amount: 200, type: "DEBIT", categoryId: fix!.id }),
-        makePnlTx({ id: "k-11c", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-11d", date: "2024-03-01", amount: 700, type: "DEBIT", categoryId: fix!.id })
+        makePnlTx({ id: "k-11a", date: "2024-02-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-11b", date: "2024-02-01", amountCents: cents(200), type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "k-11c", date: "2024-03-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-11d", date: "2024-03-01", amountCents: cents(700), type: "DEBIT", categoryId: fix!.id })
       ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
@@ -1080,10 +1110,10 @@ describe("pnl.getKpis", () => {
     await db
       .insert(transactions)
       .values([
-        makePnlTx({ id: "k-12a", date: "2024-02-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-12b", date: "2024-02-01", amount: 600, type: "DEBIT", categoryId: fix!.id }),
-        makePnlTx({ id: "k-12c", date: "2024-03-01", amount: 1000, type: "CREDIT", categoryId: inc!.id }),
-        makePnlTx({ id: "k-12d", date: "2024-03-01", amount: 600, type: "DEBIT", categoryId: fix!.id })
+        makePnlTx({ id: "k-12a", date: "2024-02-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-12b", date: "2024-02-01", amountCents: cents(600), type: "DEBIT", categoryId: fix!.id }),
+        makePnlTx({ id: "k-12c", date: "2024-03-01", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+        makePnlTx({ id: "k-12d", date: "2024-03-01", amountCents: cents(600), type: "DEBIT", categoryId: fix!.id })
       ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
@@ -1097,7 +1127,9 @@ describe("pnl.getKpis", () => {
     const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
     await db
       .insert(transactions)
-      .values([makePnlTx({ id: "k-13a", date: "2024-03-01", amount: 2000, type: "CREDIT", categoryId: inc!.id })]);
+      .values([
+        makePnlTx({ id: "k-13a", date: "2024-03-01", amountCents: cents(2000), type: "CREDIT", categoryId: inc!.id })
+      ]);
 
     const result = await makeCaller().pnl.getKpis({ month: "2024-03" });
 
@@ -1131,9 +1163,30 @@ describe("tags.list", () => {
     const work = await caller.tags.create({ name: "Work", color: "#F59E0B" });
 
     await db.insert(transactions).values([
-      { id: "tx-1", date: "2024-01-01", description: "A", amount: 1, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
-      { id: "tx-2", date: "2024-01-02", description: "B", amount: 2, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
-      { id: "tx-3", date: "2024-01-03", description: "C", amount: 3, type: "DEBIT", accountId: TEST_ACCOUNT_ID }
+      {
+        id: "tx-1",
+        date: "2024-01-01",
+        description: "A",
+        amountCents: cents(1),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "tx-2",
+        date: "2024-01-02",
+        description: "B",
+        amountCents: cents(2),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "tx-3",
+        date: "2024-01-03",
+        description: "C",
+        amountCents: cents(3),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await db.insert(transactionTags).values([
       { transactionId: "tx-1", tagId: travel.id },
@@ -1216,7 +1269,7 @@ describe("tags.delete", () => {
       id: "tx-cascade-1",
       date: "2024-01-01",
       description: "x",
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT",
       accountId: TEST_ACCOUNT_ID
     });
@@ -1236,8 +1289,22 @@ describe("tags.assignToTransactions", () => {
     const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
 
     await db.insert(transactions).values([
-      { id: "tx-a", date: "2024-01-01", description: "a", amount: 1, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
-      { id: "tx-b", date: "2024-01-02", description: "b", amount: 2, type: "DEBIT", accountId: TEST_ACCOUNT_ID }
+      {
+        id: "tx-a",
+        date: "2024-01-01",
+        description: "a",
+        amountCents: cents(1),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "tx-b",
+        date: "2024-01-02",
+        description: "b",
+        amountCents: cents(2),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
 
     const result = await caller.tags.assignToTransactions({
@@ -1259,7 +1326,7 @@ describe("tags.assignToTransactions", () => {
       id: "tx-idem",
       date: "2024-01-01",
       description: "x",
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT",
       accountId: TEST_ACCOUNT_ID
     });
@@ -1277,7 +1344,7 @@ describe("tags.assignToTransactions", () => {
       id: "tx-x",
       date: "2024-01-01",
       description: "x",
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT",
       accountId: TEST_ACCOUNT_ID
     });
@@ -1296,7 +1363,7 @@ describe("tags.assignToTransactions", () => {
       id: `tx-bulk-${i}`,
       date: "2024-01-01",
       description: `bulk-${i}`,
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT" as const,
       accountId: TEST_ACCOUNT_ID
     }));
@@ -1323,8 +1390,22 @@ describe("tags.removeFromTransactions", () => {
     const tag = await caller.tags.create({ name: "Travel", color: "#3B82F6" });
 
     await db.insert(transactions).values([
-      { id: "tx-r1", date: "2024-01-01", description: "a", amount: 1, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
-      { id: "tx-r2", date: "2024-01-02", description: "b", amount: 2, type: "DEBIT", accountId: TEST_ACCOUNT_ID }
+      {
+        id: "tx-r1",
+        date: "2024-01-01",
+        description: "a",
+        amountCents: cents(1),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "tx-r2",
+        date: "2024-01-02",
+        description: "b",
+        amountCents: cents(2),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await caller.tags.assignToTransactions({ tagId: tag.id, transactionIds: ["tx-r1", "tx-r2"] });
 
@@ -1343,7 +1424,7 @@ describe("tags.removeFromTransactions", () => {
       id: "tx-noop",
       date: "2024-01-01",
       description: "x",
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT",
       accountId: TEST_ACCOUNT_ID
     });
@@ -1362,7 +1443,7 @@ describe("tags.removeFromTransactions", () => {
       id: "tx-multi",
       date: "2024-01-01",
       description: "x",
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT",
       accountId: TEST_ACCOUNT_ID
     });
@@ -1384,7 +1465,7 @@ describe("tags.removeFromTransactions", () => {
       id: `tx-rm-bulk-${i}`,
       date: "2024-01-01",
       description: `bulk-${i}`,
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT" as const,
       accountId: TEST_ACCOUNT_ID
     }));
@@ -1441,7 +1522,7 @@ describe("tags.getReport", () => {
         id: "ny-1",
         date: "2024-03-04",
         description: "Refund",
-        amount: 50,
+        amountCents: cents(50),
         type: "CREDIT",
         categoryId: salary!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1451,7 +1532,7 @@ describe("tags.getReport", () => {
         id: "ny-2",
         date: "2024-03-05",
         description: "Hotel",
-        amount: 600,
+        amountCents: cents(600),
         type: "DEBIT",
         categoryId: hotel!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1461,7 +1542,7 @@ describe("tags.getReport", () => {
         id: "ny-3",
         date: "2024-03-06",
         description: "Dinner",
-        amount: 80,
+        amountCents: cents(80),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1470,7 +1551,7 @@ describe("tags.getReport", () => {
         id: "ny-4",
         date: "2024-03-07",
         description: "Lunch",
-        amount: 40,
+        amountCents: cents(40),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1519,7 +1600,7 @@ describe("tags.getReport", () => {
         id: "ig-1",
         date: "2024-03-05",
         description: "Dinner",
-        amount: 80,
+        amountCents: cents(80),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1528,7 +1609,7 @@ describe("tags.getReport", () => {
         id: "ig-2",
         date: "2024-03-06",
         description: "Transfer",
-        amount: 500,
+        amountCents: cents(500),
         type: "DEBIT",
         categoryId: transfer!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1554,7 +1635,7 @@ describe("tags.getReport", () => {
         id: "u-1",
         date: "2024-03-05",
         description: "Dinner",
-        amount: 80,
+        amountCents: cents(80),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1563,7 +1644,7 @@ describe("tags.getReport", () => {
         id: "u-2",
         date: "2024-03-06",
         description: "Mystery",
-        amount: 30,
+        amountCents: cents(30),
         type: "DEBIT",
         categoryId: null,
         accountId: TEST_ACCOUNT_ID
@@ -1589,7 +1670,7 @@ describe("tags.getReport", () => {
         id: "iso-1",
         date: "2024-03-05",
         description: "NY Dinner",
-        amount: 80,
+        amountCents: cents(80),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1598,7 +1679,7 @@ describe("tags.getReport", () => {
         id: "iso-2",
         date: "2024-03-06",
         description: "Work Lunch",
-        amount: 30,
+        amountCents: cents(30),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1624,7 +1705,7 @@ describe("tags.getReport", () => {
       id: "tx-multi",
       date: "2024-03-05",
       description: "Dinner",
-      amount: 50,
+      amountCents: cents(50),
       type: "DEBIT",
       categoryId: foodCat!.id,
       accountId: TEST_ACCOUNT_ID
@@ -1651,7 +1732,7 @@ describe("tags.getReport", () => {
         id: "d-1",
         date: "2024-03-09",
         description: "Late",
-        amount: 10,
+        amountCents: cents(10),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1660,7 +1741,7 @@ describe("tags.getReport", () => {
         id: "d-2",
         date: "2024-03-03",
         description: "Early",
-        amount: 10,
+        amountCents: cents(10),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1669,7 +1750,7 @@ describe("tags.getReport", () => {
         id: "d-3",
         date: "2024-03-06",
         description: "Middle",
-        amount: 10,
+        amountCents: cents(10),
         type: "DEBIT",
         categoryId: ignored!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1693,7 +1774,7 @@ describe("tags.getReport", () => {
         id: "fp-1",
         date: "2024-03-05",
         description: "a",
-        amount: 0.1,
+        amountCents: cents(0.1),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1702,7 +1783,7 @@ describe("tags.getReport", () => {
         id: "fp-2",
         date: "2024-03-06",
         description: "b",
-        amount: 0.2,
+        amountCents: cents(0.2),
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -1727,7 +1808,7 @@ describe("tags.getReportByName", () => {
       id: "n-1",
       date: "2024-03-05",
       description: "Dinner",
-      amount: 50,
+      amountCents: cents(50),
       type: "DEBIT",
       categoryId: food!.id,
       accountId: TEST_ACCOUNT_ID
@@ -1773,14 +1854,16 @@ describe("tags.getReportByName", () => {
 
 describe("transactions.list with tags", () => {
   it("returns tags: [] for transactions with no tags", async () => {
-    await makeDb().insert(transactions).values({
-      id: "tx-untagged",
-      date: "2024-01-01",
-      description: "x",
-      amount: 1,
-      type: "DEBIT",
-      accountId: TEST_ACCOUNT_ID
-    });
+    await makeDb()
+      .insert(transactions)
+      .values({
+        id: "tx-untagged",
+        date: "2024-01-01",
+        description: "x",
+        amountCents: cents(1),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      });
 
     const result = await makeCaller().transactions.list({});
 
@@ -1795,8 +1878,22 @@ describe("transactions.list with tags", () => {
     const food = await caller.tags.create({ name: "Food", color: "#10B981" });
 
     await db.insert(transactions).values([
-      { id: "tx-t1", date: "2024-01-02", description: "a", amount: 1, type: "DEBIT", accountId: TEST_ACCOUNT_ID },
-      { id: "tx-t2", date: "2024-01-01", description: "b", amount: 2, type: "DEBIT", accountId: TEST_ACCOUNT_ID }
+      {
+        id: "tx-t1",
+        date: "2024-01-02",
+        description: "a",
+        amountCents: cents(1),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      },
+      {
+        id: "tx-t2",
+        date: "2024-01-01",
+        description: "b",
+        amountCents: cents(2),
+        type: "DEBIT",
+        accountId: TEST_ACCOUNT_ID
+      }
     ]);
     await caller.tags.assignToTransactions({ tagId: travel.id, transactionIds: ["tx-t1", "tx-t2"] });
     await caller.tags.assignToTransactions({ tagId: food.id, transactionIds: ["tx-t1"] });
@@ -1817,7 +1914,7 @@ describe("transactions.list with tags", () => {
       id: "tx-shape",
       date: "2024-01-01",
       description: "x",
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT",
       accountId: TEST_ACCOUNT_ID
     });
@@ -1842,7 +1939,7 @@ describe("transactions.list with tags", () => {
       id: `tx-page-${i}`,
       date: `2024-01-0${i + 1}`,
       description: `d${i}`,
-      amount: 1,
+      amountCents: cents(1),
       type: "DEBIT" as const,
       accountId: TEST_ACCOUNT_ID
     }));
@@ -2235,5 +2332,184 @@ describe("cardBenefits.upsert", () => {
     });
 
     expect(benefit.rewardRate).toBe(5.0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// settings, fxRates, and multi-currency conversion (ADR-0003)
+// ---------------------------------------------------------------------------
+
+describe("settings", () => {
+  it("defaults to MXN when no settings row exists", async () => {
+    const result = await makeCaller().settings.get();
+    expect(result.baseCurrency).toBe("MXN");
+  });
+
+  it("updates the base currency and persists it", async () => {
+    const caller = makeCaller();
+    const updated = await caller.settings.update({ baseCurrency: "USD" });
+    expect(updated.baseCurrency).toBe("USD");
+
+    const fetched = await caller.settings.get();
+    expect(fetched.baseCurrency).toBe("USD");
+  });
+
+  it("rejects a non-ISO currency code", () => {
+    expect(updateSettingsInputSchema.safeParse({ baseCurrency: "pesos" }).success).toBe(false);
+    expect(updateSettingsInputSchema.safeParse({ baseCurrency: "MXN" }).success).toBe(true);
+  });
+});
+
+describe("fxRates", () => {
+  it("upserts a rate for the current base and lists it", async () => {
+    const caller = makeCaller();
+    const created = await caller.fxRates.upsert({ month: "2024-01", currency: "USD", rate: 17.25 });
+    expect(created.baseCurrency).toBe("MXN");
+    expect(created.rate).toBe(17.25);
+
+    const updated = await caller.fxRates.upsert({ month: "2024-01", currency: "USD", rate: 17.5 });
+    expect(updated.id).toBe(created.id);
+    expect(updated.rate).toBe(17.5);
+
+    const list = await caller.fxRates.list();
+    expect(list.baseCurrency).toBe("MXN");
+    expect(list.rates).toHaveLength(1);
+    expect(list.rates[0]!.rate).toBe(17.5);
+  });
+
+  it("rejects a rate from the base currency to itself", async () => {
+    await expect(makeCaller().fxRates.upsert({ month: "2024-01", currency: "MXN", rate: 1 })).rejects.toMatchObject({
+      code: "BAD_REQUEST"
+    });
+  });
+
+  it("deletes a rate and 404s on unknown ids", async () => {
+    const caller = makeCaller();
+    const created = await caller.fxRates.upsert({ month: "2024-01", currency: "USD", rate: 17 });
+    const result = await caller.fxRates.delete({ id: created.id });
+    expect(result.deletedId).toBe(created.id);
+    await expect(caller.fxRates.delete({ id: 99999 })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("keeps rates pair-keyed: switching base does not reuse old-base rates", async () => {
+    const caller = makeCaller();
+    await caller.fxRates.upsert({ month: "2024-01", currency: "USD", rate: 17 });
+    await caller.settings.update({ baseCurrency: "USD" });
+
+    const list = await caller.fxRates.list();
+    expect(list.baseCurrency).toBe("USD");
+    expect(list.rates).toHaveLength(0);
+  });
+});
+
+describe("multi-currency P&L conversion", () => {
+  const USD_ACCOUNT_ID = "test-account-usd-0000-0000-0000";
+
+  async function seedUsdAccount() {
+    await makeDb().insert(accounts).values({
+      id: USD_ACCOUNT_ID,
+      name: "US Card",
+      institution: "US Bank",
+      type: "CREDIT",
+      currency: "USD",
+      color: "#3b82f6",
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  it("converts foreign-account transactions at the month's rate", async () => {
+    const db = makeDb();
+    const caller = makeCaller();
+    await seedUsdAccount();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    await db.insert(transactions).values([
+      // 1000 MXN on the MXN account
+      makePnlTx({ id: "fx-1", date: "2024-01-10", amountCents: cents(1000), type: "CREDIT", categoryId: inc!.id }),
+      // 100 USD on the USD account
+      {
+        ...makePnlTx({ id: "fx-2", date: "2024-01-15", amountCents: cents(100), type: "CREDIT", categoryId: inc!.id }),
+        accountId: USD_ACCOUNT_ID
+      }
+    ]);
+    await caller.fxRates.upsert({ month: "2024-01", currency: "USD", rate: 17.25 });
+
+    const result = await caller.pnl.getMonth({ month: "2024-01" });
+
+    // 1000 + 100 * 17.25 = 2725 MXN
+    expect(result.currency).toBe("MXN");
+    expect(result.income.total).toBe(2725);
+  });
+
+  it("hard-errors with PRECONDITION_FAILED listing the missing (month, currency) pairs", async () => {
+    const db = makeDb();
+    await seedUsdAccount();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    await db.insert(transactions).values({
+      ...makePnlTx({ id: "fx-3", date: "2024-02-15", amountCents: cents(100), type: "CREDIT", categoryId: inc!.id }),
+      accountId: USD_ACCOUNT_ID
+    });
+
+    await expect(makeCaller().pnl.getMonth({ month: "2024-02" })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: expect.stringContaining("USD 2024-02")
+    });
+  });
+
+  it("does not require rates for months with only base-currency transactions", async () => {
+    const db = makeDb();
+    const [inc] = await db.insert(categories).values({ name: "Salary", groupType: "INCOME" }).returning();
+    await db
+      .insert(transactions)
+      .values(
+        makePnlTx({ id: "fx-4", date: "2024-03-01", amountCents: cents(500), type: "CREDIT", categoryId: inc!.id })
+      );
+
+    const result = await makeCaller().pnl.getMonth({ month: "2024-03" });
+    expect(result.income.total).toBe(500);
+  });
+
+  it("stores upload amounts as integer cents (ADR-0001)", async () => {
+    const caller = makeCaller();
+    await caller.transactions.upload({
+      transactions: [
+        {
+          id: "cents-1",
+          date: "2024-01-01",
+          description: "Precise",
+          amount: 1.005, // naive *100 + Math.round gives 100; decimal-safe parse gives 101
+          type: "DEBIT",
+          sourceFile: "bank.csv",
+          rawRow: "{}",
+          createdAt: new Date().toISOString()
+        }
+      ],
+      sourceFile: "bank.csv",
+      mapping: { fileFingerprint: "fp-cents", dateCol: "D", descriptionCol: "De", amountCol: "A" },
+      accountId: TEST_ACCOUNT_ID
+    });
+
+    const [stored] = await makeDb().select().from(transactions).where(eq(transactions.id, "cents-1"));
+    expect(stored!.amountCents).toBe(101);
+  });
+
+  it("treats a refund categorized as Refunds (INCOME) as income, not spend (ADR-0002)", async () => {
+    const db = makeDb();
+    const [shopping] = await db.insert(categories).values({ name: "Shopping", groupType: "VARIABLE" }).returning();
+    const [refunds] = await db.insert(categories).values({ name: "Refunds", groupType: "INCOME" }).returning();
+    await db.insert(transactions).values([
+      makePnlTx({
+        id: "rf-1",
+        date: "2024-04-05",
+        amountCents: cents(2000),
+        type: "DEBIT",
+        categoryId: shopping!.id
+      }),
+      makePnlTx({ id: "rf-2", date: "2024-04-20", amountCents: cents(2000), type: "CREDIT", categoryId: refunds!.id })
+    ]);
+
+    const result = await makeCaller().pnl.getMonth({ month: "2024-04" });
+    expect(result.variable.total).toBe(2000);
+    expect(result.income.total).toBe(2000);
+    expect(result.net).toBe(0);
   });
 });

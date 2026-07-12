@@ -2,20 +2,40 @@ import { describe, expect, it } from "vitest";
 
 import { buildCardOptimizationResult } from "./card-optimization";
 
-import type { CardOptimizationBenefitInput, CardOptimizationSpendInput } from "./card-optimization";
+import type { CardOptimizationBenefit } from "./card-optimization";
+import type { RollupCell } from "./rollup-cell";
 
-const accountNames = new Map<string, string>([
-  ["acc-cashback", "Cashback Card"],
-  ["acc-points", "Points Card"],
-  ["acc-bare", "Bare Debit"]
-]);
+const spendCell = (
+  group: "FIXED" | "VARIABLE",
+  accountId: string,
+  accountName: string,
+  amount: number
+): RollupCell => ({
+  month: "2026-01",
+  categoryId: 20,
+  categoryName: "Spend",
+  groupType: group,
+  accountId,
+  accountName,
+  cents: Math.round(amount * 100),
+  rowCount: 1
+});
+
+const benefit = (
+  accountId: string,
+  accountName: string,
+  group: "FIXED" | "VARIABLE",
+  rewardType: "CASHBACK" | "POINTS",
+  rewardRate: number
+): CardOptimizationBenefit => ({ accountId, accountName, categoryGroup: group, rewardType, rewardRate });
 
 describe("buildCardOptimizationResult", () => {
   it("returns empty groups and zero summary when there is no spend", () => {
-    const result = buildCardOptimizationResult("2026-01", "2026-03", [], [], accountNames);
+    const result = buildCardOptimizationResult("2026-01", "2026-03", [], [], "MXN");
 
     expect(result.start_month).toBe("2026-01");
     expect(result.end_month).toBe("2026-03");
+    expect(result.currency).toBe("MXN");
     expect(result.category_groups).toEqual([]);
     expect(result.summary).toEqual({
       cashback: { earned: 0, potential: 0, missed: 0 },
@@ -24,15 +44,13 @@ describe("buildCardOptimizationResult", () => {
   });
 
   it("computes earned, potential, and missed for a single category group", () => {
-    const spend: CardOptimizationSpendInput[] = [
-      { category_group: "VARIABLE", account_id: "acc-cashback", account_name: "Cashback Card", spend: 600 },
-      { category_group: "VARIABLE", account_id: "acc-bare", account_name: "Bare Debit", spend: 400 }
+    const cells = [
+      spendCell("VARIABLE", "acc-cashback", "Cashback Card", 600),
+      spendCell("VARIABLE", "acc-bare", "Bare Debit", 400)
     ];
-    const benefits: CardOptimizationBenefitInput[] = [
-      { account_id: "acc-cashback", category_group: "VARIABLE", reward_type: "CASHBACK", reward_rate: 0.03 }
-    ];
+    const benefits = [benefit("acc-cashback", "Cashback Card", "VARIABLE", "CASHBACK", 0.03)];
 
-    const result = buildCardOptimizationResult("2026-01", "2026-01", spend, benefits, accountNames);
+    const result = buildCardOptimizationResult("2026-01", "2026-01", cells, benefits, "MXN");
 
     expect(result.category_groups).toHaveLength(1);
     const group = result.category_groups[0]!;
@@ -40,6 +58,7 @@ describe("buildCardOptimizationResult", () => {
     expect(group.total_spend).toBe(1000);
     expect(group.best_rate).toBeCloseTo(0.03);
     expect(group.best_rate_account_id).toBe("acc-cashback");
+    expect(group.best_rate_account_name).toBe("Cashback Card");
     expect(group.best_reward_type).toBe("CASHBACK");
     // Earned: 0.03 * 600 + 0 * 400 = 18
     expect(group.rewards_earned).toBe(18);
@@ -58,20 +77,20 @@ describe("buildCardOptimizationResult", () => {
   });
 
   it("keeps cashback and points separate in the summary", () => {
-    const spend: CardOptimizationSpendInput[] = [
+    const cells = [
       // Dining (VARIABLE) — best is points
-      { category_group: "VARIABLE", account_id: "acc-cashback", account_name: "Cashback Card", spend: 200 },
-      { category_group: "VARIABLE", account_id: "acc-points", account_name: "Points Card", spend: 300 },
+      spendCell("VARIABLE", "acc-cashback", "Cashback Card", 200),
+      spendCell("VARIABLE", "acc-points", "Points Card", 300),
       // Bills (FIXED) — best is cashback
-      { category_group: "FIXED", account_id: "acc-cashback", account_name: "Cashback Card", spend: 1000 }
+      spendCell("FIXED", "acc-cashback", "Cashback Card", 1000)
     ];
-    const benefits: CardOptimizationBenefitInput[] = [
-      { account_id: "acc-cashback", category_group: "VARIABLE", reward_type: "CASHBACK", reward_rate: 0.02 },
-      { account_id: "acc-points", category_group: "VARIABLE", reward_type: "POINTS", reward_rate: 5 },
-      { account_id: "acc-cashback", category_group: "FIXED", reward_type: "CASHBACK", reward_rate: 0.015 }
+    const benefits = [
+      benefit("acc-cashback", "Cashback Card", "VARIABLE", "CASHBACK", 0.02),
+      benefit("acc-points", "Points Card", "VARIABLE", "POINTS", 5),
+      benefit("acc-cashback", "Cashback Card", "FIXED", "CASHBACK", 0.015)
     ];
 
-    const result = buildCardOptimizationResult("2026-01", "2026-02", spend, benefits, accountNames);
+    const result = buildCardOptimizationResult("2026-01", "2026-02", cells, benefits, "MXN");
 
     expect(result.category_groups).toHaveLength(2);
     const variable = result.category_groups.find((g) => g.category_group === "VARIABLE")!;
@@ -102,11 +121,9 @@ describe("buildCardOptimizationResult", () => {
   });
 
   it("treats accounts with no card_benefits as reward_rate 0", () => {
-    const spend: CardOptimizationSpendInput[] = [
-      { category_group: "VARIABLE", account_id: "acc-bare", account_name: "Bare Debit", spend: 500 }
-    ];
+    const cells = [spendCell("VARIABLE", "acc-bare", "Bare Debit", 500)];
 
-    const result = buildCardOptimizationResult("2026-01", "2026-01", spend, [], accountNames);
+    const result = buildCardOptimizationResult("2026-01", "2026-01", cells, [], "MXN");
 
     const group = result.category_groups[0]!;
     expect(group.best_rate).toBe(0);
@@ -117,16 +134,14 @@ describe("buildCardOptimizationResult", () => {
     expect(group.by_account[0]!.reward_type).toBeNull();
   });
 
-  it("aggregates duplicate spend rows for the same account+group", () => {
-    const spend: CardOptimizationSpendInput[] = [
-      { category_group: "VARIABLE", account_id: "acc-cashback", account_name: "Cashback Card", spend: 100 },
-      { category_group: "VARIABLE", account_id: "acc-cashback", account_name: "Cashback Card", spend: 250 }
+  it("aggregates multiple cells for the same account+group", () => {
+    const cells = [
+      spendCell("VARIABLE", "acc-cashback", "Cashback Card", 100),
+      spendCell("VARIABLE", "acc-cashback", "Cashback Card", 250)
     ];
-    const benefits: CardOptimizationBenefitInput[] = [
-      { account_id: "acc-cashback", category_group: "VARIABLE", reward_type: "CASHBACK", reward_rate: 0.04 }
-    ];
+    const benefits = [benefit("acc-cashback", "Cashback Card", "VARIABLE", "CASHBACK", 0.04)];
 
-    const result = buildCardOptimizationResult("2026-01", "2026-01", spend, benefits, accountNames);
+    const result = buildCardOptimizationResult("2026-01", "2026-01", cells, benefits, "MXN");
     const group = result.category_groups[0]!;
     expect(group.total_spend).toBe(350);
     expect(group.by_account).toHaveLength(1);

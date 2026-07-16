@@ -98,7 +98,9 @@ function CategoryTransactionRows({
           <td colSpan={colCount - 2} className="py-1.5 px-2 text-muted-foreground">
             {tx.description}
           </td>
-          <td className="py-1.5 pr-2 text-right tabular-nums text-foreground">{formatCurrency(tx.amount)}</td>
+          <td className="py-1.5 pr-2 text-right tabular-nums text-foreground">
+            {formatCurrency(tx.amount, tx.currency)}
+          </td>
         </tr>
       ))}
     </>
@@ -132,6 +134,7 @@ function renderSection(
   focusedMonth: string | undefined
 ) {
   const colCount = visibleMonths.length + 2;
+  const currency = visibleMonths[0]?.currency;
   const categories = collectCategoryRows(visibleMonths, sectionKey);
 
   return (
@@ -161,13 +164,13 @@ function renderSection(
                     key={m.month}
                     className={cn("text-right tabular-nums", val === 0 && "text-muted-foreground/50")}
                   >
-                    {formatCurrency(val)}
+                    {formatCurrency(val, currency)}
                   </TableCell>
                 );
               })}
 
               <TableCell className="text-right tabular-nums font-medium">
-                {formatCurrency(getCategoryYtd(visibleMonths, sectionKey, cat.categoryId))}
+                {formatCurrency(getCategoryYtd(visibleMonths, sectionKey, cat.categoryId), currency)}
               </TableCell>
             </TableRow>
 
@@ -183,11 +186,14 @@ function renderSection(
         <TableCell className="sticky left-0 z-10 bg-muted/30 pl-3">Total {sectionLabel}</TableCell>
         {visibleMonths.map((m) => (
           <TableCell key={m.month} className="bg-muted/30 text-right tabular-nums">
-            {formatCurrency(m[sectionKey].total)}
+            {formatCurrency(m[sectionKey].total, currency)}
           </TableCell>
         ))}
         <TableCell className="bg-muted/30 text-right tabular-nums">
-          {formatCurrency(visibleMonths.reduce((s, m) => s + m[sectionKey].total, 0))}
+          {formatCurrency(
+            visibleMonths.reduce((s, m) => s + m[sectionKey].total, 0),
+            currency
+          )}
         </TableCell>
       </TableRow>
     </>
@@ -362,7 +368,7 @@ function PnlPage() {
                       m.net > 0 ? "text-income" : m.net < 0 ? "text-destructive" : "text-muted-foreground"
                     )}
                   >
-                    {formatCurrency(m.net)}
+                    {formatCurrency(m.net, report.currency)}
                   </TableCell>
                 ))}
                 <TableCell
@@ -371,7 +377,7 @@ function PnlPage() {
                     report.ytdNet > 0 ? "text-income" : report.ytdNet < 0 ? "text-destructive" : "text-muted-foreground"
                   )}
                 >
-                  {formatCurrency(report.ytdNet)}
+                  {formatCurrency(report.ytdNet, report.currency)}
                 </TableCell>
               </TableRow>
 

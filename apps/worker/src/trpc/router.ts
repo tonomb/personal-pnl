@@ -1,5 +1,5 @@
 import { initTRPC, TRPCError } from "@trpc/server";
-import { and, count, desc, eq, inArray, isNull, like, sql, type SQL } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { WorkersLogger } from "workers-tagged-logger";
 import { z } from "zod";
 
@@ -13,14 +13,14 @@ import {
   findTagByName,
   FxRateMissingError,
   getSettings,
+  groupedTransactions,
   insertTransactions,
+  listTransactionsWithTags,
   listFxRates,
-  loadFxContext,
   updateSettings,
   upsertFxRate
 } from "@pnl/db";
-import { centsToAmount } from "@pnl/money";
-import type { CardBenefit, GroupedTransactionsResult, KpiSummary, Tag } from "@pnl/types";
+import type { CardBenefit, GroupedTransactionsResult, KpiSummary } from "@pnl/types";
 import {
   accounts,
   assignTagInputSchema,
@@ -338,197 +338,14 @@ export const appRouter = router({
   }),
 
   transactions: router({
-    list: publicProcedure.input(transactionListInputSchema).query(async ({ input, ctx }) => {
-      const filters: SQL[] = [];
-      if (input.month) filters.push(like(transactions.date, `${input.month}%`));
-      if (input.categoryId !== undefined) filters.push(eq(transactions.categoryId, input.categoryId));
-      if (input.uncategorized) filters.push(isNull(transactions.categoryId));
-      if (input.tagId) {
-        filters.push(
-          inArray(
-            transactions.id,
-            ctx.db
-              .select({ id: transactionTags.transactionId })
-              .from(transactionTags)
-              .where(eq(transactionTags.tagId, input.tagId))
-          )
-        );
-      }
-      const whereClause = filters.length ? and(...filters) : undefined;
-
-      const rows = await ctx.db
-        .select({
-          id: transactions.id,
-          date: transactions.date,
-          description: transactions.description,
-          amountCents: transactions.amountCents,
-          currency: accounts.currency,
-          type: transactions.type,
-          categoryId: transactions.categoryId,
-          sourceFile: transactions.sourceFile,
-          createdAt: transactions.createdAt,
-          categoryName: categories.name,
-          categoryGroupType: categories.groupType,
-          categoryColor: categories.color
-        })
-        .from(transactions)
-        .innerJoin(accounts, eq(transactions.accountId, accounts.id))
-        .leftJoin(categories, eq(transactions.categoryId, categories.id))
-        .where(whereClause)
-        .orderBy(desc(transactions.date))
-        .limit(input.limit)
-        .offset(input.offset);
-
-      const [{ total }] = await ctx.db.select({ total: count() }).from(transactions).where(whereClause);
-
-      const txIds = rows.map((r) => r.id);
-      const tagsByTx = new Map<string, Tag[]>();
-      if (txIds.length > 0) {
-        type TagJoinRow = { transactionId: string; id: string; name: string; color: string; createdAt: string };
-        const tagRowsBatched = (await batchChunked(ctx.db, txIds, 90, (chunk) =>
-          ctx.db
-            .select({
-              transactionId: transactionTags.transactionId,
-              id: tags.id,
-              name: tags.name,
-              color: tags.color,
-              createdAt: tags.createdAt
-            })
-            .from(transactionTags)
-            .innerJoin(tags, eq(tags.id, transactionTags.tagId))
-            .where(inArray(transactionTags.transactionId, chunk))
-        )) as TagJoinRow[][];
-        for (const tagRow of tagRowsBatched.flat()) {
-          const { transactionId, ...tag } = tagRow;
-          const list = tagsByTx.get(transactionId) ?? [];
-          list.push(tag);
-          tagsByTx.set(transactionId, list);
-        }
-      }
-      const enrichedRows = rows.map(({ amountCents, ...r }) => ({
-        ...r,
-        amount: centsToAmount(amountCents),
-        tags: tagsByTx.get(r.id) ?? []
-      }));
-      return { rows: enrichedRows, total: total ?? 0 };
+    list: publicProcedure.input(transactionListInputSchema).query(({ input, ctx }) => {
+      return listTransactionsWithTags(ctx.db, input);
     }),
 
     grouped: publicProcedure
       .input(transactionGroupedInputSchema)
-      .query(async ({ input, ctx }): Promise<GroupedTransactionsResult> => {
-        return withFxErrorMapped(async () => {
-          const filters: SQL[] = [];
-          if (input?.month) filters.push(like(transactions.date, `${input.month}%`));
-          if (input?.categoryId !== undefined) filters.push(eq(transactions.categoryId, input.categoryId));
-          if (input?.uncategorized) filters.push(isNull(transactions.categoryId));
-          if (input?.tagId) {
-            filters.push(
-              inArray(
-                transactions.id,
-                ctx.db
-                  .select({ id: transactionTags.transactionId })
-                  .from(transactionTags)
-                  .where(eq(transactionTags.tagId, input.tagId))
-              )
-            );
-          }
-          const whereClause = filters.length ? and(...filters) : undefined;
-
-          const monthExpr = sql<string>`strftime('%Y-%m', ${transactions.date})`;
-          const rows = await ctx.db
-            .select({
-              description: transactions.description,
-              month: monthExpr,
-              currency: accounts.currency,
-              count: count(),
-              cents: sql<number>`SUM(${transactions.amountCents})`
-            })
-            .from(transactions)
-            .innerJoin(accounts, eq(transactions.accountId, accounts.id))
-            .where(whereClause)
-            .groupBy(transactions.description, monthExpr, sql`${accounts.currency}`);
-
-          const fx = await loadFxContext(
-            ctx.db,
-            rows.map((r) => ({ month: r.month, currency: r.currency }))
-          );
-
-          const byDescription = new Map<string, { count: number; cents: number }>();
-          for (const r of rows) {
-            const bucket = byDescription.get(r.description) ?? { count: 0, cents: 0 };
-            bucket.count += r.count;
-            bucket.cents += fx.toBaseCents(Number(r.cents ?? 0), r.month, r.currency);
-            byDescription.set(r.description, bucket);
-          }
-
-          const categoryCounts = await ctx.db
-            .select({
-              description: transactions.description,
-              categoryId: transactions.categoryId,
-              categoryName: categories.name,
-              categoryGroupType: categories.groupType,
-              categoryColor: categories.color,
-              cnt: count()
-            })
-            .from(transactions)
-            .innerJoin(categories, eq(transactions.categoryId, categories.id))
-            .where(whereClause)
-            .groupBy(
-              transactions.description,
-              transactions.categoryId,
-              categories.name,
-              categories.groupType,
-              categories.color
-            );
-
-          const modeByDesc = new Map<
-            string,
-            {
-              categoryId: number | null;
-              categoryName: string | null;
-              categoryGroupType: string | null;
-              categoryColor: string | null;
-            }
-          >();
-          const topCountByDesc = new Map<string, number>();
-          for (const row of categoryCounts) {
-            const prevTop = topCountByDesc.get(row.description) ?? -1;
-            if (row.cnt > prevTop) {
-              topCountByDesc.set(row.description, row.cnt);
-              modeByDesc.set(row.description, {
-                categoryId: row.categoryId,
-                categoryName: row.categoryName,
-                categoryGroupType: row.categoryGroupType,
-                categoryColor: row.categoryColor
-              });
-            } else if (row.cnt === prevTop) {
-              modeByDesc.set(row.description, {
-                categoryId: null,
-                categoryName: null,
-                categoryGroupType: null,
-                categoryColor: null
-              });
-            }
-          }
-
-          return {
-            currency: fx.baseCurrency,
-            rows: [...byDescription.entries()]
-              .sort((a, b) => b[1].count - a[1].count)
-              .map(([description, bucket]) => {
-                const mode = modeByDesc.get(description);
-                return {
-                  description,
-                  count: bucket.count,
-                  totalAmount: centsToAmount(bucket.cents),
-                  categoryId: mode?.categoryId ?? null,
-                  categoryName: mode?.categoryName ?? null,
-                  categoryGroupType: mode?.categoryGroupType ?? null,
-                  categoryColor: mode?.categoryColor ?? null
-                };
-              })
-          };
-        });
+      .query(({ input, ctx }): Promise<GroupedTransactionsResult> => {
+        return withFxErrorMapped(() => groupedTransactions(ctx.db, input));
       }),
 
     categorize: publicProcedure.input(categorizeInputSchema).mutation(async ({ input, ctx }) => {

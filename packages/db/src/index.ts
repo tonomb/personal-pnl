@@ -8,6 +8,8 @@ export { computeKpiSummary, computeMonthlyPnl, computePnlReport } from "./pnl";
 export { getBudgetVariance, getCashflowTrend, getCategoryList, getFinancialHealthSnapshot } from "./advisor-tools";
 export { analyzeCardOptimization } from "./card-optimization";
 export { getSpendingByCategory, getTopMerchants, listTransactions, searchTransactions } from "./transactions-query";
+export { groupedTransactions, listTransactionsWithTags } from "./transactions";
+export type { TransactionListQuery } from "./transactions";
 export { buildTagReport, findTagByName, getTagReportByName, listTagNames } from "./tags";
 export { getSettings, updateSettings } from "./settings";
 export { deleteFxRate, listFxRates, upsertFxRate } from "./fx-rates";

@@ -55,7 +55,9 @@ const TRAILING_MONTHS = 3;
 
 export async function getBudgetVariance(db: PnlDb, month: string): Promise<BudgetVarianceResult> {
   const ym = parseMonth(month);
-  const trailingMonths = [shiftMonth(ym, -3), shiftMonth(ym, -2), shiftMonth(ym, -1)].map(formatMonth);
+  const trailingMonths = Array.from({ length: TRAILING_MONTHS }, (_, i) =>
+    formatMonth(shiftMonth(ym, i - TRAILING_MONTHS))
+  );
 
   const { currency, cells } = await fetchRollup(db, { months: [...trailingMonths, month] });
 

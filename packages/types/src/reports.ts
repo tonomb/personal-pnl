@@ -14,15 +14,7 @@ export type DataQuality = {
 
 // --- Advisor tools ---------------------------------------------------------
 
-export type FinancialHealthSnapshot = {
-  month: string;
-  currency: string;
-  net: number;
-  netLabel: KpiSummary["netLabel"];
-  savingsRate: number | null;
-  savingsLabel: KpiSummary["savingsLabel"];
-  biggestExpense: { name: string; total: number } | null;
-  vsLastMonth: { delta: number; label: "BETTER" | "WORSE" | "SAME" } | null;
+export type FinancialHealthSnapshot = KpiSummary & {
   data_quality: DataQuality;
 };
 

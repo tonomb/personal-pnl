@@ -1,6 +1,6 @@
 import { centsToAmount } from "@pnl/money";
 
-import type { TagReportCategoryBreakdown } from "@pnl/types";
+import type { CategoryGroup, TagReportCategoryBreakdown } from "@pnl/types";
 
 /** One tagged transaction, with its magnitude already converted to base cents. */
 export type TagReportRow = {
@@ -8,7 +8,7 @@ export type TagReportRow = {
   cents: number;
   categoryId: number | null;
   categoryName: string | null;
-  groupType: "INCOME" | "FIXED" | "VARIABLE" | "IGNORED" | null;
+  groupType: CategoryGroup | null;
 };
 
 export type TagReportSummary = {

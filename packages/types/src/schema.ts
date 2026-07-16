@@ -353,6 +353,9 @@ export type NewCardBenefit = typeof cardBenefits.$inferInsert;
 export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;
 
+/** The Group deciding P&L direction (ADR-0002), derived from the schema enum. */
+export type CategoryGroup = Category["groupType"];
+
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
 

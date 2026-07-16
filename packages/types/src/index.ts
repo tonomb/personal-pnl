@@ -8,6 +8,7 @@ export type {
   GroupedTransactionsResult,
   KpiSummary,
   MissingFxRate,
+  MonthCurrencyPair,
   MonthGroup,
   MonthlyPnL,
   PnLReport,

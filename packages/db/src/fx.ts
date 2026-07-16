@@ -5,7 +5,7 @@ import { fxRates } from "@pnl/types";
 
 import { getSettings } from "./settings";
 
-import type { MissingFxRate } from "@pnl/types";
+import type { MissingFxRate, MonthCurrencyPair } from "@pnl/types";
 import type { PnlDb } from "./client";
 
 /**
@@ -35,10 +35,10 @@ export type FxContext = {
  * (month, currency) pairs. Throws FxRateMissingError listing ALL missing
  * pairs up front, so one round-trip surfaces everything to fix.
  */
-export async function loadFxContext(db: PnlDb, pairs: Iterable<MissingFxRate>): Promise<FxContext> {
+export async function loadFxContext(db: PnlDb, pairs: Iterable<MonthCurrencyPair>): Promise<FxContext> {
   const { baseCurrency } = await getSettings(db);
 
-  const needed = new Map<string, MissingFxRate>();
+  const needed = new Map<string, MonthCurrencyPair>();
   for (const pair of pairs) {
     if (pair.currency === baseCurrency) continue;
     needed.set(`${pair.month}::${pair.currency}`, pair);

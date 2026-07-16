@@ -105,6 +105,10 @@ function uncategorizedWarning(count: number, period: string): string | undefined
 export class PnLMcp extends McpAgent<Env> {
   server = new McpServer({ name: "pnl-mcp-worker", version: "0.1.0" }, { jsonSchemaValidator: validator });
 
+  private db() {
+    return drizzle(this.env.DB, { schema });
+  }
+
   async init() {
     this.server.registerTool(
       "ping",
@@ -112,7 +116,7 @@ export class PnLMcp extends McpAgent<Env> {
         description: "Liveness probe: confirms the MCP worker can reach its D1 binding and read the shared schema."
       },
       async () => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         const count = await db.$count(schema.categories);
         return {
           content: [{ type: "text", text: `pong (categories=${count})` }]
@@ -132,7 +136,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async ({ year }) =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const report = await computePnlReport(db, year);
           return jsonText({
             ...report,
@@ -152,7 +156,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async ({ month }) =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const { pnl, uncategorizedCount } = await computeMonthlyPnl(db, month);
           return jsonText({
             ...pnl,
@@ -183,7 +187,7 @@ export class PnLMcp extends McpAgent<Env> {
           };
         }
         return withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           if (month) {
             const { pnl, uncategorizedCount } = await computeMonthlyPnl(db, month);
             return jsonText({
@@ -216,7 +220,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async () =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const year = new Date().getUTCFullYear();
           const report = await computePnlReport(db, year);
           return jsonText({
@@ -242,7 +246,7 @@ export class PnLMcp extends McpAgent<Env> {
         inputSchema: mcpGetTransactionsInputSchema.shape
       },
       async (input) => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         const result = await listTransactions(db, input);
         return jsonText(result);
       }
@@ -260,7 +264,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async ({ month }) =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const result = await getSpendingByCategory(db, month);
           return jsonText(result);
         })
@@ -278,7 +282,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async (input) =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const result = await getTopMerchants(db, input);
           return jsonText(result);
         })
@@ -294,7 +298,7 @@ export class PnLMcp extends McpAgent<Env> {
         inputSchema: mcpSearchTransactionsInputSchema.shape
       },
       async (input) => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         const result = await searchTransactions(db, input);
         return jsonText({ rows: result });
       }
@@ -314,7 +318,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async () =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const snapshot = await getFinancialHealthSnapshot(db);
           return jsonText(snapshot);
         })
@@ -335,7 +339,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async ({ month }) =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const result = await getBudgetVariance(db, month);
           return jsonText(result);
         })
@@ -355,7 +359,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async ({ months }) =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const result = await getCashflowTrend(db, months);
           return jsonText(result);
         })
@@ -372,7 +376,7 @@ export class PnLMcp extends McpAgent<Env> {
           "computed across all transactions so you can warn the user when categorization coverage is poor."
       },
       async () => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         const result = await getCategoryList(db);
         return jsonText(result);
       }
@@ -393,7 +397,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async ({ startMonth, endMonth }) =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const result = await analyzeCardOptimization(db, startMonth, endMonth);
           return jsonText(result);
         })
@@ -409,7 +413,7 @@ export class PnLMcp extends McpAgent<Env> {
       },
       async ({ tag_name }) =>
         withFxError(async () => {
-          const db = drizzle(this.env.DB, { schema });
+          const db = this.db();
           const result = await getTagReportByName(db, tag_name);
 
           if (!result) {
@@ -446,7 +450,7 @@ export class PnLMcp extends McpAgent<Env> {
           "Raw transaction rows keep their account's original currency."
       },
       async () => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         return jsonText(await getSettings(db));
       }
     );
@@ -460,7 +464,7 @@ export class PnLMcp extends McpAgent<Env> {
         inputSchema: { baseCurrency: currencyCodeSchema }
       },
       async ({ baseCurrency }) => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         return jsonText(await updateSettings(db, { baseCurrency }));
       }
     );
@@ -473,7 +477,7 @@ export class PnLMcp extends McpAgent<Env> {
           "Each rate means 'base units per 1 unit of the foreign currency' for that month."
       },
       async () => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         return jsonText(await listFxRates(db));
       }
     );
@@ -493,7 +497,7 @@ export class PnLMcp extends McpAgent<Env> {
         }
       },
       async ({ month, currency, rate }) => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         try {
           return jsonText(await upsertFxRate(db, { month, currency, rate }));
         } catch (err) {

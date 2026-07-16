@@ -5,7 +5,9 @@
 // currency-agnostic and only stamps the currency code onto the DTOs it emits.
 // ---------------------------------------------------------------------------
 
-export type CategoryGroup = "INCOME" | "FIXED" | "VARIABLE" | "IGNORED";
+import type { CategoryGroup } from "@pnl/types";
+
+export type { CategoryGroup } from "@pnl/types";
 
 export type RollupCell = {
   month: string; // YYYY-MM

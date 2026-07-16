@@ -157,8 +157,11 @@ export type CategoriesByGroup = {
   IGNORED: Category[];
 };
 
-/** A needed (month, currency) pair with no fx_rates row — reports hard-error on these (ADR-0003). */
-export type MissingFxRate = {
+/** A (month, currency) pair — the granularity FX rates are keyed at (ADR-0003). */
+export type MonthCurrencyPair = {
   month: string;
   currency: string;
 };
+
+/** A needed pair with no fx_rates row — reports hard-error on these (ADR-0003). */
+export type MissingFxRate = MonthCurrencyPair;

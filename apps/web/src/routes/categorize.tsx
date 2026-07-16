@@ -22,6 +22,7 @@ import { TagFilterSelect } from "@/components/tags/TagFilterSelect";
 import { TagPicker } from "@/components/tags/TagPicker";
 import { TagPill } from "@/components/tags/TagPill";
 import { getContrastColor } from "@/lib/color";
+import { formatCurrency } from "@/lib/pnl-helpers";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 
@@ -64,10 +65,6 @@ type FlatRow = MerchantRow | TxRow;
 
 const GRID =
   "grid-cols-[20px_minmax(0,1fr)_96px_minmax(160px,260px)] sm:grid-cols-[20px_minmax(0,1fr)_80px_100px_minmax(220px,1fr)]";
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
-}
 
 function formatDate(date: string): string {
   const [y, m, d] = date.split("-").map(Number);
@@ -333,7 +330,7 @@ function TransactionRow({
       <span className="hidden text-xs text-muted-foreground sm:block">{formatDate(tx.date)}</span>
       <span className={cn("text-right text-sm tabular-nums", tx.type === "DEBIT" ? "text-destructive" : "text-income")}>
         {tx.type === "DEBIT" ? "-" : "+"}
-        {formatCurrency(tx.amount)}
+        {formatCurrency(tx.amount, tx.currency)}
       </span>
       <span className="hidden min-w-0 items-center gap-1.5 overflow-hidden sm:flex">
         {tx.categoryId != null ? (

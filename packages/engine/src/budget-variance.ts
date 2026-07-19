@@ -1,5 +1,7 @@
 import { centsToAmount, round2 } from "@pnl/money";
 
+import { expenseCells } from "./rollup-cell";
+
 import type { BudgetVarianceLabel, BudgetVarianceRow } from "@pnl/types";
 import type { RollupCell } from "./rollup-cell";
 
@@ -25,9 +27,7 @@ export function buildBudgetVarianceRows(
   };
   const byCategory = new Map<number, Bucket>();
 
-  for (const cell of cells) {
-    if (cell.categoryId === null) continue;
-    if (cell.groupType !== "FIXED" && cell.groupType !== "VARIABLE") continue;
+  for (const cell of expenseCells(cells)) {
     const bucket: Bucket = byCategory.get(cell.categoryId) ?? {
       categoryId: cell.categoryId,
       categoryName: cell.categoryName ?? "",

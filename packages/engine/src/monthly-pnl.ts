@@ -1,58 +1,20 @@
 import { centsToAmount, ratioOrNull } from "@pnl/money";
 
+import { inGroup, inMonth, sumByCategory } from "./rollup-cell";
+
 import type { CategoryTotal, KpiSummary, MonthGroup, MonthlyPnL } from "@pnl/types";
-import type { RollupCell } from "./rollup-cell";
+import type { CategoryCents, RollupCell } from "./rollup-cell";
 
-type CategoryBucket = {
-  categoryId: number;
-  categoryName: string;
-  cents: number;
-};
+// The category's groupType is the source of truth for P&L direction (ADR-0002,
+// encoded once in the rollup-cell selectors): a category's total is the sum of
+// every transaction in it regardless of the bank-reported DEBIT/CREDIT type.
+// The bank type is unreliable across statement formats (LAG-46), and gating on
+// it silently dropped amounts.
 
-type MonthCents = {
-  income: Map<number, CategoryBucket>;
-  fixed: Map<number, CategoryBucket>;
-  variable: Map<number, CategoryBucket>;
-  ignored: Map<number, CategoryBucket>;
-};
-
-// The category's groupType is the source of truth for P&L direction (ADR-0002):
-// a category's total is the sum of every transaction in it regardless of the
-// bank-reported DEBIT/CREDIT type. The bank type is unreliable across statement
-// formats (LAG-46), and gating on it silently dropped amounts.
-function bucketMonth(month: string, cells: RollupCell[]): MonthCents {
-  const buckets: MonthCents = { income: new Map(), fixed: new Map(), variable: new Map(), ignored: new Map() };
-  for (const cell of cells) {
-    if (cell.month !== month || cell.categoryId === null) continue;
-    const map =
-      cell.groupType === "INCOME"
-        ? buckets.income
-        : cell.groupType === "FIXED"
-          ? buckets.fixed
-          : cell.groupType === "VARIABLE"
-            ? buckets.variable
-            : cell.groupType === "IGNORED"
-              ? buckets.ignored
-              : null;
-    if (!map) continue;
-    const existing = map.get(cell.categoryId);
-    if (existing) {
-      existing.cents += cell.cents;
-    } else {
-      map.set(cell.categoryId, {
-        categoryId: cell.categoryId,
-        categoryName: cell.categoryName ?? "",
-        cents: cell.cents
-      });
-    }
-  }
-  return buckets;
-}
-
-function toGroup(map: Map<number, CategoryBucket>): { group: MonthGroup; cents: number } {
+function toGroup(buckets: CategoryCents[]): { group: MonthGroup; cents: number } {
   let cents = 0;
   const items: CategoryTotal[] = [];
-  for (const bucket of map.values()) {
+  for (const bucket of buckets) {
     cents += bucket.cents;
     items.push({
       categoryId: bucket.categoryId,
@@ -64,11 +26,11 @@ function toGroup(map: Map<number, CategoryBucket>): { group: MonthGroup; cents: 
 }
 
 export function buildMonthlyPnL(month: string, cells: RollupCell[], currency: string): MonthlyPnL {
-  const buckets = bucketMonth(month, cells);
-  const income = toGroup(buckets.income);
-  const fixed = toGroup(buckets.fixed);
-  const variable = toGroup(buckets.variable);
-  const ignored = toGroup(buckets.ignored);
+  const monthCells = inMonth(cells, month);
+  const income = toGroup(sumByCategory(inGroup(monthCells, "INCOME")));
+  const fixed = toGroup(sumByCategory(inGroup(monthCells, "FIXED")));
+  const variable = toGroup(sumByCategory(inGroup(monthCells, "VARIABLE")));
+  const ignored = toGroup(sumByCategory(inGroup(monthCells, "IGNORED")));
 
   const netCents = income.cents - fixed.cents - variable.cents;
 

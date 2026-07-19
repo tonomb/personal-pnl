@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatCurrency } from "@/lib/pnl-helpers";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { sumAmounts } from "@pnl/money";
 
 import type { TagReportCategoryBreakdown } from "@pnl/types";
 
@@ -31,7 +32,7 @@ function groupBySection(items: TagReportCategoryBreakdown[]) {
 }
 
 function sumTotal(items: TagReportCategoryBreakdown[]): number {
-  return items.reduce((acc, c) => acc + c.total, 0);
+  return sumAmounts(items.map((c) => c.total));
 }
 
 // ---------------------------------------------------------------------------

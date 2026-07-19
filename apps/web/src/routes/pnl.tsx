@@ -21,6 +21,7 @@ import {
 } from "@/lib/pnl-helpers";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { sumSectionAcrossMonths } from "@pnl/engine";
 
 import type { MonthlyPnL, TransactionWithCategory } from "@pnl/types";
 
@@ -190,10 +191,8 @@ function renderSection(
           </TableCell>
         ))}
         <TableCell className="bg-muted/30 text-right tabular-nums">
-          {formatCurrency(
-            visibleMonths.reduce((s, m) => s + m[sectionKey].total, 0),
-            currency
-          )}
+          {/* Summed in cents by the engine — a float reduce here can drift from the CSV export. */}
+          {formatCurrency(sumSectionAcrossMonths(visibleMonths, sectionKey), currency)}
         </TableCell>
       </TableRow>
     </>

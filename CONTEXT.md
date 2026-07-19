@@ -57,3 +57,6 @@ Net income divided by total income for a month. A rate (4 decimal places), not m
 
 **Rollup Cell**:
 The unit every money aggregate is computed from: one month × Category × Account bucket of summed transaction magnitudes, already converted to Base Currency cents. Produced in exactly one place; every report is a pure fold over cells.
+
+**Merchant Cell**:
+The merchant-grain sibling of the Rollup Cell: one month × merchant (statement description, raw or normalized) bucket of summed magnitudes, already converted to Base Currency cents. Produced next to the Rollup Cell; merchant reports are pure folds over Merchant Cells.

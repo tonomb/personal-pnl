@@ -41,3 +41,8 @@ export function ratioOrNull(numerator: number, denominator: number): number | nu
 export function multiplyCentsByRate(cents: number, rate: number): number {
   return new Decimal(cents).mul(rate).toDecimalPlaces(0).toNumber();
 }
+
+/** Sum major-unit amounts exactly (via cents) — never fold amounts with `+`. */
+export function sumAmounts(amounts: number[]): number {
+  return centsToAmount(amounts.reduce((sum, a) => sum + toCents(a), 0));
+}

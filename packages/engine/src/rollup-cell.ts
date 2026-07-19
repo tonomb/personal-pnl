@@ -22,6 +22,78 @@ export type RollupCell = {
   rowCount: number;
 };
 
+// ---------------------------------------------------------------------------
+// Direction selectors — the ONE place the direction-from-category rule
+// (ADR-0002) is written down. Every report composes these instead of
+// re-implementing the groupType ladder.
+// ---------------------------------------------------------------------------
+
+/** Does this Group land on the income side of the P&L? (ADR-0002) */
+export function isIncomeGroup(group: CategoryGroup | null | undefined): group is "INCOME" {
+  return group === "INCOME";
+}
+
+/** Does this Group land on the expense side of the P&L? (ADR-0002) */
+export function isExpenseGroup(group: CategoryGroup | null | undefined): group is "FIXED" | "VARIABLE" {
+  return group === "FIXED" || group === "VARIABLE";
+}
+
+/** A cell that is categorized (never an uncategorized bucket). */
+export type CategorizedCell = RollupCell & { categoryId: number; groupType: CategoryGroup };
+export type IncomeCell = CategorizedCell & { groupType: "INCOME" };
+export type ExpenseCell = CategorizedCell & { groupType: "FIXED" | "VARIABLE" };
+
+/** Cells for one month. */
+export function inMonth<C extends { month: string }>(cells: C[], month: string): C[] {
+  return cells.filter((c) => c.month === month);
+}
+
+/** Categorized cells of one Group. */
+export function inGroup(cells: RollupCell[], group: CategoryGroup): CategorizedCell[] {
+  return cells.filter((c): c is CategorizedCell => c.groupType === group && c.categoryId !== null);
+}
+
+/** Cells that count toward income (ADR-0002). */
+export function incomeCells(cells: RollupCell[]): IncomeCell[] {
+  return cells.filter((c): c is IncomeCell => isIncomeGroup(c.groupType) && c.categoryId !== null);
+}
+
+/** Cells that count toward expenses: FIXED + VARIABLE (ADR-0002). */
+export function expenseCells(cells: RollupCell[]): ExpenseCell[] {
+  return cells.filter((c): c is ExpenseCell => isExpenseGroup(c.groupType) && c.categoryId !== null);
+}
+
+/** Total base-currency cents across cells. */
+export function sumCents(cells: Array<{ cents: number }>): number {
+  return cells.reduce((sum, c) => sum + c.cents, 0);
+}
+
+export type CategoryCents<G extends CategoryGroup = CategoryGroup> = {
+  categoryId: number;
+  categoryName: string;
+  groupType: G;
+  cents: number;
+};
+
+/** Fold cells into one bucket per category (insertion order preserved). */
+export function sumByCategory<C extends CategorizedCell>(cells: C[]): Array<CategoryCents<C["groupType"]>> {
+  const byCategory = new Map<number, CategoryCents<C["groupType"]>>();
+  for (const cell of cells) {
+    const existing = byCategory.get(cell.categoryId);
+    if (existing) {
+      existing.cents += cell.cents;
+    } else {
+      byCategory.set(cell.categoryId, {
+        categoryId: cell.categoryId,
+        categoryName: cell.categoryName ?? "",
+        groupType: cell.groupType,
+        cents: cell.cents
+      });
+    }
+  }
+  return [...byCategory.values()];
+}
+
 /** Transactions with no category, across the given cells (optionally one month). */
 export function countUncategorized(cells: RollupCell[], month?: string): number {
   return cells.reduce((sum, c) => {

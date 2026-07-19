@@ -1,4 +1,4 @@
-import { centsToAmount, round4, toCents } from "@pnl/money";
+import { centsToAmount, round4, sumAmounts, toCents } from "@pnl/money";
 
 import { buildMonthlyPnL } from "./monthly-pnl";
 import { countUncategorized, monthsIn } from "./rollup-cell";
@@ -66,8 +66,17 @@ export function sumCategoryAcrossMonths(months: MonthlyPnL[], section: TableSect
   return centsToAmount(cents);
 }
 
-function sumAmounts(amounts: number[]): number {
-  return centsToAmount(amounts.reduce((sum, a) => sum + toCents(a), 0));
+/**
+ * Section total across the given months, summed exactly in cents. The UI must
+ * use this (never a float reduce) so on-screen totals match the CSV export.
+ */
+export function sumSectionAcrossMonths(months: MonthlyPnL[], section: TableSection): number {
+  return sumAmounts(months.map((m) => m[section].total));
+}
+
+/** NET across the given months, summed exactly in cents. */
+export function sumNetAcrossMonths(months: MonthlyPnL[]): number {
+  return sumAmounts(months.map((m) => m.net));
 }
 
 function formatPercentCell(rate: number): string {
@@ -105,12 +114,12 @@ export function buildPnlReportCsv(months: MonthlyPnL[], monthHeaders: string[]):
       const monthValues = months.map((m) => getCategoryMonthTotal(months, key, cat.categoryId, m.month).toFixed(2));
       rows.push([cat.categoryName, ...monthValues, sumCategoryAcrossMonths(months, key, cat.categoryId).toFixed(2)]);
     }
-    const sectionYtd = sumAmounts(months.map((m) => m[key].total));
+    const sectionYtd = sumSectionAcrossMonths(months, key);
     rows.push([`Total ${label}`, ...months.map((m) => m[key].total.toFixed(2)), sectionYtd.toFixed(2)]);
     rows.push([]);
   }
 
-  rows.push(["NET", ...months.map((m) => m.net.toFixed(2)), sumAmounts(months.map((m) => m.net)).toFixed(2)]);
+  rows.push(["NET", ...months.map((m) => m.net.toFixed(2)), sumNetAcrossMonths(months).toFixed(2)]);
 
   const rates = months.map((m) => m.savingsRate).filter((r): r is number => r !== null);
   const avgRate = rates.length === 0 ? null : rates.reduce((s, r) => s + r, 0) / rates.length;

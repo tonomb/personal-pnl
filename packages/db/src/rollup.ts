@@ -1,10 +1,10 @@
-import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
 
 import { accounts, categories, transactions } from "@pnl/types";
 
 import { loadFxContext } from "./fx";
 
-import type { CategoryGroup, RollupCell } from "@pnl/engine";
+import type { CategoryGroup, MerchantCell, RollupCell } from "@pnl/engine";
 import type { PnlDb } from "./client";
 
 export type RollupFilter = { year: number } | { months: string[] } | { startMonth: string; endMonth: string };
@@ -64,6 +64,56 @@ export async function fetchRollup(db: PnlDb, filter: RollupFilter): Promise<Roll
     groupType: (r.groupType as CategoryGroup | null) ?? null,
     accountId: r.accountId,
     accountName: r.accountName,
+    cents: fx.toBaseCents(Number(r.cents ?? 0), r.month, r.currency),
+    rowCount: Number(r.rowCount ?? 0)
+  }));
+
+  return { currency: fx.baseCurrency, cells };
+}
+
+export type MerchantRollup = {
+  /** The base currency every cell's cents are denominated in. */
+  currency: string;
+  cells: MerchantCell[];
+};
+
+/**
+ * The Rollup Cell's merchant-grain sibling: the ONLY other query + FX seam.
+ * Groups transactions by merchant × month (× account currency, folded away
+ * during conversion) so merchant reports are pure engine folds over cells.
+ * `normalizeMerchant` groups by UPPER(TRIM(description)); otherwise the raw
+ * description is the key.
+ */
+export async function fetchMerchantCells(
+  db: PnlDb,
+  opts: { where?: SQL; normalizeMerchant?: boolean } = {}
+): Promise<MerchantRollup> {
+  const merchantExpr = opts.normalizeMerchant
+    ? sql<string>`UPPER(TRIM(${transactions.description}))`
+    : sql<string>`${transactions.description}`;
+  const monthExpr = sql<string>`strftime('%Y-%m', ${transactions.date})`;
+
+  const rows = await db
+    .select({
+      merchant: merchantExpr,
+      month: monthExpr,
+      currency: accounts.currency,
+      cents: sql<number>`SUM(${transactions.amountCents})`,
+      rowCount: sql<number>`COUNT(*)`
+    })
+    .from(transactions)
+    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+    .where(opts.where)
+    .groupBy(merchantExpr, monthExpr, sql`${accounts.currency}`);
+
+  const fx = await loadFxContext(
+    db,
+    rows.map((r) => ({ month: r.month, currency: r.currency }))
+  );
+
+  const cells: MerchantCell[] = rows.map((r) => ({
+    merchant: r.merchant,
+    month: r.month,
     cents: fx.toBaseCents(Number(r.cents ?? 0), r.month, r.currency),
     rowCount: Number(r.rowCount ?? 0)
   }));

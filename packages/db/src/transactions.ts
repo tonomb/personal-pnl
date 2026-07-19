@@ -1,9 +1,10 @@
 import { and, count, desc, eq, inArray, isNull, like, sql, type SQL } from "drizzle-orm";
 
+import { buildSpendingByCategoryRows, rankMerchantsByVolume, summarizeMerchants } from "@pnl/engine";
 import { centsToAmount } from "@pnl/money";
 import { accounts, categories, transactions, transactionTags } from "@pnl/types";
 
-import { withBaseCents } from "./fx";
+import { fetchMerchantCells, fetchRollup } from "./rollup";
 import { tagsByTransactionId } from "./tags";
 
 import type {
@@ -99,8 +100,8 @@ export async function listTransactionsWithTags(db: PnlDb, input: TransactionList
 }
 
 /**
- * Transactions grouped by description for bulk categorization: totals are
- * FX-converted to the base currency per (month, account currency) cell, and
+ * Transactions grouped by description for bulk categorization: totals are a
+ * pure fold over Merchant Cells (raw-description grain, base currency), and
  * each description carries its most-common category (ties break to null).
  */
 export async function groupedTransactions(
@@ -110,29 +111,8 @@ export async function groupedTransactions(
   const filters = listFilters(input, db);
   const whereClause = filters.length ? and(...filters) : undefined;
 
-  const monthExpr = sql<string>`strftime('%Y-%m', ${transactions.date})`;
-  const rows = await db
-    .select({
-      description: transactions.description,
-      month: monthExpr,
-      currency: accounts.currency,
-      count: count(),
-      cents: sql<number>`SUM(${transactions.amountCents})`
-    })
-    .from(transactions)
-    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
-    .where(whereClause)
-    .groupBy(transactions.description, monthExpr, sql`${accounts.currency}`);
-
-  const { baseCurrency, rows: converted } = await withBaseCents(db, rows);
-
-  const byDescription = new Map<string, { count: number; cents: number }>();
-  for (const r of converted) {
-    const bucket = byDescription.get(r.description) ?? { count: 0, cents: 0 };
-    bucket.count += r.count;
-    bucket.cents += r.baseCents;
-    byDescription.set(r.description, bucket);
-  }
+  const { currency, cells } = await fetchMerchantCells(db, { where: whereClause });
+  const totals = summarizeMerchants(cells);
 
   const categoryCounts = await db
     .select({
@@ -185,15 +165,15 @@ export async function groupedTransactions(
   }
 
   return {
-    currency: baseCurrency,
-    rows: [...byDescription.entries()]
-      .sort((a, b) => b[1].count - a[1].count)
-      .map(([description, bucket]) => {
+    currency,
+    rows: [...totals]
+      .sort((a, b) => b.count - a.count)
+      .map(({ merchant: description, count: txCount, cents }) => {
         const mode = modeByDesc.get(description);
         return {
           description,
-          count: bucket.count,
-          totalAmount: centsToAmount(bucket.cents),
+          count: txCount,
+          totalAmount: centsToAmount(cents),
           categoryId: mode?.categoryId ?? null,
           categoryName: mode?.categoryName ?? null,
           categoryGroupType: mode?.categoryGroupType ?? null,
@@ -263,96 +243,24 @@ export async function listTransactions(db: PnlDb, input: ListTransactionsInput):
 }
 
 /**
- * Expense-category totals for one month, converted to the base currency.
- * Spend is every transaction in FIXED/VARIABLE categories — the bank
- * DEBIT/CREDIT type is ignored (ADR-0002; this fixes the last LAG-46 gap).
+ * Expense-category totals for one month: a pure engine fold over the month's
+ * Rollup Cells (direction from category, ADR-0002; base currency, ADR-0003).
  */
 export async function getSpendingByCategory(db: PnlDb, month: string): Promise<SpendingByCategoryResult> {
-  const rows = await db
-    .select({
-      categoryId: transactions.categoryId,
-      categoryName: categories.name,
-      groupType: categories.groupType,
-      currency: accounts.currency,
-      cents: sql<number>`SUM(${transactions.amountCents})`
-    })
-    .from(transactions)
-    .innerJoin(categories, eq(transactions.categoryId, categories.id))
-    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
-    .where(and(like(transactions.date, `${month}%`), inArray(categories.groupType, ["FIXED", "VARIABLE"])))
-    .groupBy(transactions.categoryId, categories.name, categories.groupType, accounts.currency);
-
-  const { baseCurrency, rows: converted } = await withBaseCents(
-    db,
-    rows.map((r) => ({ ...r, month }))
-  );
-
-  const centsByCategory = new Map<number, { categoryName: string; groupType: "FIXED" | "VARIABLE"; cents: number }>();
-  for (const r of converted) {
-    const categoryId = r.categoryId as number;
-    const existing = centsByCategory.get(categoryId);
-    if (existing) {
-      existing.cents += r.baseCents;
-    } else {
-      centsByCategory.set(categoryId, {
-        categoryName: r.categoryName,
-        groupType: r.groupType as "FIXED" | "VARIABLE",
-        cents: r.baseCents
-      });
-    }
-  }
-
-  return {
-    currency: baseCurrency,
-    rows: [...centsByCategory.entries()]
-      .map(([categoryId, bucket]) => ({
-        categoryId,
-        categoryName: bucket.categoryName,
-        groupType: bucket.groupType,
-        total: centsToAmount(bucket.cents)
-      }))
-      .sort((a, b) => b.total - a.total)
-  };
+  const { currency, cells } = await fetchRollup(db, { months: [month] });
+  return { currency, rows: buildSpendingByCategoryRows(cells) };
 }
 
 /**
- * Merchants ranked by total transaction volume, converted to the base
- * currency per (month, account currency) before ranking so mixed-currency
- * histories rank honestly.
+ * Merchants ranked by total transaction volume: a pure engine fold over
+ * Merchant Cells (normalized-merchant grain, base currency) so
+ * mixed-currency histories rank honestly.
  */
 export async function getTopMerchants(db: PnlDb, input: TopMerchantsInput): Promise<TopMerchantsResult> {
   const limit = Math.min(input.limit ?? 10, 200);
-  const merchant = sql<string>`UPPER(TRIM(${transactions.description}))`;
-  const monthExpr = sql<string>`strftime('%Y-%m', ${transactions.date})`;
-
-  const rows = await db
-    .select({
-      merchant,
-      month: monthExpr,
-      currency: accounts.currency,
-      count: count(),
-      cents: sql<number>`SUM(${transactions.amountCents})`
-    })
-    .from(transactions)
-    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
-    .where(input.month ? like(transactions.date, `${input.month}%`) : undefined)
-    .groupBy(merchant, monthExpr, sql`${accounts.currency}`);
-
-  const { baseCurrency, rows: converted } = await withBaseCents(db, rows);
-
-  const byMerchant = new Map<string, { count: number; cents: number }>();
-  for (const r of converted) {
-    const bucket = byMerchant.get(r.merchant) ?? { count: 0, cents: 0 };
-    bucket.count += r.count;
-    bucket.cents += r.baseCents;
-    byMerchant.set(r.merchant, bucket);
-  }
-
-  return {
-    currency: baseCurrency,
-    rows: [...byMerchant.entries()]
-      .map(([name, bucket]) => ({ merchant: name, count: bucket.count, total: centsToAmount(bucket.cents) }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, limit)
-  };
+  const { currency, cells } = await fetchMerchantCells(db, {
+    where: input.month ? like(transactions.date, `${input.month}%`) : undefined,
+    normalizeMerchant: true
+  });
+  return { currency, rows: rankMerchantsByVolume(cells, limit) };
 }

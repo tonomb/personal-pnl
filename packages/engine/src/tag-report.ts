@@ -1,5 +1,7 @@
 import { centsToAmount } from "@pnl/money";
 
+import { isExpenseGroup, isIncomeGroup } from "./rollup-cell";
+
 import type { CategoryGroup, TagReportCategoryBreakdown } from "@pnl/types";
 
 /** One tagged transaction, with its magnitude already converted to base cents. */
@@ -43,10 +45,10 @@ export function summarizeTagRows(rows: TagReportRow[]): TagReportSummary {
     if (maxDate === null || row.date > maxDate) maxDate = row.date;
 
     const groupType = row.groupType;
-    if (groupType !== "INCOME" && groupType !== "FIXED" && groupType !== "VARIABLE") continue;
+    if (!isIncomeGroup(groupType) && !isExpenseGroup(groupType)) continue;
     if (row.categoryId === null || row.categoryName === null) continue;
 
-    if (groupType === "INCOME") {
+    if (isIncomeGroup(groupType)) {
       incomeCents += row.cents;
     } else {
       spendCents += row.cents;

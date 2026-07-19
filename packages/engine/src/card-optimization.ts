@@ -1,5 +1,7 @@
 import { centsToAmount, multiplyCentsByRate } from "@pnl/money";
 
+import { expenseCells } from "./rollup-cell";
+
 import type {
   CardOptimizationAccountSpend,
   CardOptimizationCategoryGroup,
@@ -61,8 +63,7 @@ export function buildCardOptimizationResult(
     groupBuckets.set(group, { totalSpendCents: 0, byAccount: new Map() });
   }
 
-  for (const cell of cells) {
-    if (cell.groupType !== "FIXED" && cell.groupType !== "VARIABLE") continue;
+  for (const cell of expenseCells(cells)) {
     const bucket = groupBuckets.get(cell.groupType)!;
     bucket.totalSpendCents += cell.cents;
     const existing = bucket.byAccount.get(cell.accountId);

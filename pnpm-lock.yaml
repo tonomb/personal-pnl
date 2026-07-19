@@ -133,6 +133,9 @@ importers:
       '@pnl/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@pnl/money':
+        specifier: workspace:*
+        version: link:../../packages/money
       '@pnl/types':
         specifier: workspace:*
         version: link:../../packages/types

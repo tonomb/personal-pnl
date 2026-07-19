@@ -48,8 +48,8 @@ type MerchantRow = {
   merchantKey: string;
   txIds: string[];
   displayName: string;
-  totalDebits: number;
-  totalCredits: number;
+  /** Debit/credit subtotals per original currency — never summed across currencies. */
+  totals: Array<{ currency: string; debits: number; credits: number }>;
 };
 
 type TxRow = {
@@ -282,8 +282,12 @@ function MerchantHeaderRow({
       </button>
       <span />
       <span className="text-right text-xs tabular-nums">
-        {row.totalDebits > 0 && <span className="block text-destructive">-{formatCurrency(row.totalDebits)}</span>}
-        {row.totalCredits > 0 && <span className="block text-income">+{formatCurrency(row.totalCredits)}</span>}
+        {row.totals.map((t) => (
+          <span key={t.currency}>
+            {t.debits > 0 && <span className="block text-destructive">-{formatCurrency(t.debits, t.currency)}</span>}
+            {t.credits > 0 && <span className="block text-income">+{formatCurrency(t.credits, t.currency)}</span>}
+          </span>
+        ))}
       </span>
       <span className="hidden sm:block" />
     </div>
@@ -562,15 +566,22 @@ function CategorizePage() {
     const rows: FlatRow[] = [];
     for (const [key, txs] of groups) {
       const txIds = txs.map((t) => t.id);
-      const totalDebits = txs.filter((t) => t.type === "DEBIT").reduce((s, t) => s + t.amount, 0);
-      const totalCredits = txs.filter((t) => t.type === "CREDIT").reduce((s, t) => s + t.amount, 0);
+      const byCurrency = new Map<string, { debits: number; credits: number }>();
+      for (const t of txs) {
+        const bucket = byCurrency.get(t.currency) ?? { debits: 0, credits: 0 };
+        if (t.type === "DEBIT") bucket.debits += t.amount;
+        else bucket.credits += t.amount;
+        byCurrency.set(t.currency, bucket);
+      }
+      const totals = [...byCurrency.entries()]
+        .map(([currency, sums]) => ({ currency, ...sums }))
+        .sort((a, b) => a.currency.localeCompare(b.currency));
       rows.push({
         kind: "merchant-header",
         merchantKey: key,
         txIds,
         displayName: txs[0]!.description.trim(),
-        totalDebits,
-        totalCredits
+        totals
       });
       if (expandedMerchants.has(key)) {
         for (const tx of txs) rows.push({ kind: "transaction", tx });

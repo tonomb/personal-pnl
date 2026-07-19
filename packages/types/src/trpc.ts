@@ -1,4 +1,4 @@
-import type { Account, CardBenefit, Category, Tag } from "./schema";
+import type { Account, CardBenefit, Category, CategoryGroup, Tag } from "./schema";
 
 // ---------------------------------------------------------------------------
 // API/DTO types shared between the worker and the web app.
@@ -15,7 +15,7 @@ import type { Account, CardBenefit, Category, Tag } from "./schema";
 
 export type UpsertCardBenefitInput = {
   accountId: string;
-  categoryGroup: "INCOME" | "FIXED" | "VARIABLE" | "IGNORED";
+  categoryGroup: CategoryGroup;
   rewardType: "CASHBACK" | "POINTS";
   rewardRate: number;
   notes?: string | null;

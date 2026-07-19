@@ -31,6 +31,24 @@ export type FxContext = {
 };
 
 /**
+ * Load FX context for the given aggregate rows and return each row with its
+ * `cents` converted to base-currency integer cents. Shared by every
+ * "SQL GROUP BY (…, month, currency) then fold into buckets" query so the
+ * conversion boilerplate lives in one place.
+ */
+export async function withBaseCents<R extends { month: string; currency: string; cents: number }>(
+  db: PnlDb,
+  rows: R[]
+): Promise<{ baseCurrency: string; rows: Array<R & { baseCents: number }> }> {
+  const fx = await loadFxContext(db, rows);
+  return {
+    baseCurrency: fx.baseCurrency,
+    // SUM() comes back from D1 as unknown-ish; normalize before converting.
+    rows: rows.map((r) => ({ ...r, baseCents: fx.toBaseCents(Number(r.cents ?? 0), r.month, r.currency) }))
+  };
+}
+
+/**
  * Load the base currency and every rate needed to convert the given
  * (month, currency) pairs. Throws FxRateMissingError listing ALL missing
  * pairs up front, so one round-trip surfaces everything to fix.

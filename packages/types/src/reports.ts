@@ -1,3 +1,4 @@
+import type { CategoryGroup } from "./schema";
 import type { KpiSummary, TagReport } from "./trpc";
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,7 @@ export type CashflowTrendResult = {
 export type CategoryListRow = {
   id: number;
   name: string;
-  group_type: "INCOME" | "FIXED" | "VARIABLE" | "IGNORED";
+  group_type: CategoryGroup;
   color: string | null;
 };
 

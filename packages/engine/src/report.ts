@@ -85,6 +85,10 @@ function escapeCsvCell(cell: string): string {
 /**
  * CSV export of the P&L over the given months (typically the report's visible
  * subset). All sums happen here, in cents — the UI only downloads the string.
+ *
+ * Deliberately lives in the engine rather than the web app: exact totals
+ * require folding cents, and the engine is the only layer that has them
+ * (DTOs carry rounded major units, ADR-0001).
  */
 export function buildPnlReportCsv(months: MonthlyPnL[], monthHeaders: string[]): string {
   const rows: string[][] = [["Category", ...monthHeaders, "YTD"]];

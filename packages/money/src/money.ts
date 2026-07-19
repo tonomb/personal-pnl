@@ -26,7 +26,7 @@ export function round2(n: number): number {
   return new Decimal(n).toDecimalPlaces(2).toNumber();
 }
 
-/** Round a rate/ratio to 4dp (HALF_UP) — rates are not money (ADR: D7). */
+/** Round a rate/ratio to 4dp (HALF_UP) — rates are not money (spec 02, decision D7). */
 export function round4(n: number): number {
   return new Decimal(n).toDecimalPlaces(4).toNumber();
 }

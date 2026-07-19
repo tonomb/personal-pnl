@@ -12,6 +12,37 @@ import type { Tag, TagReport, TagReportByNameResult, TagReportTransaction } from
 import type { PnlDb } from "./client";
 
 /**
+ * All tags for the given transactions, keyed by transaction id. Batched at 90
+ * ids per statement to stay under D1's 100-bound-param limit.
+ */
+export async function tagsByTransactionId(db: PnlDb, txIds: string[]): Promise<Map<string, Tag[]>> {
+  const tagsByTx = new Map<string, Tag[]>();
+  if (txIds.length === 0) return tagsByTx;
+
+  type TagJoinRow = { transactionId: string; id: string; name: string; color: string; createdAt: string };
+  const tagRowsBatched = (await batchChunked(db, txIds, 90, (chunk) =>
+    db
+      .select({
+        transactionId: transactionTags.transactionId,
+        id: tags.id,
+        name: tags.name,
+        color: tags.color,
+        createdAt: tags.createdAt
+      })
+      .from(transactionTags)
+      .innerJoin(tags, eq(tags.id, transactionTags.tagId))
+      .where(inArray(transactionTags.transactionId, chunk))
+  )) as TagJoinRow[][];
+  for (const row of tagRowsBatched.flat()) {
+    const { transactionId, ...t } = row;
+    const list = tagsByTx.get(transactionId) ?? [];
+    list.push(t);
+    tagsByTx.set(transactionId, list);
+  }
+  return tagsByTx;
+}
+
+/**
  * The single tag-report builder (previously duplicated verbatim in the tRPC
  * router and the MCP path). Totals are converted to the base currency and
  * follow the direction-from-category rule (ADR-0002); the transaction list
@@ -42,31 +73,10 @@ export async function buildTagReport(db: PnlDb, tag: Tag): Promise<TagReport> {
     .where(eq(transactionTags.tagId, tag.id))
     .orderBy(transactions.date);
 
-  const txIds = rows.map((r) => r.id);
-  const tagsByTx = new Map<string, Tag[]>();
-  if (txIds.length > 0) {
-    type TagJoinRow = { transactionId: string; id: string; name: string; color: string; createdAt: string };
-    // SELECT ... WHERE id IN (chunk): 1 bound param per row.
-    const tagRowsBatched = (await batchChunked(db, txIds, 90, (chunk) =>
-      db
-        .select({
-          transactionId: transactionTags.transactionId,
-          id: tags.id,
-          name: tags.name,
-          color: tags.color,
-          createdAt: tags.createdAt
-        })
-        .from(transactionTags)
-        .innerJoin(tags, eq(tags.id, transactionTags.tagId))
-        .where(inArray(transactionTags.transactionId, chunk))
-    )) as TagJoinRow[][];
-    for (const row of tagRowsBatched.flat()) {
-      const { transactionId, ...t } = row;
-      const list = tagsByTx.get(transactionId) ?? [];
-      list.push(t);
-      tagsByTx.set(transactionId, list);
-    }
-  }
+  const tagsByTx = await tagsByTransactionId(
+    db,
+    rows.map((r) => r.id)
+  );
 
   const fx = await loadFxContext(
     db,

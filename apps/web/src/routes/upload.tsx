@@ -5,7 +5,6 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AccountSelector } from "@/components/accounts/AccountSelector";
 import { ColumnMapper, type MappingState } from "@/components/upload/ColumnMapper";
 import { DropZone } from "@/components/upload/DropZone";
 import { RawPreviewPanel } from "@/components/upload/RawPreviewPanel";
@@ -26,8 +25,14 @@ export const Route = createFileRoute("/upload")({
 
 type FileStatus =
   | { phase: "parsing" }
-  | { phase: "mapping"; headers: string[]; rawRows: Array<Record<string, string>>; fingerprint: string }
-  | { phase: "ready"; transactions: TransactionUpload[]; mapping: NewColumnMapping }
+  | {
+      phase: "mapping";
+      headers: string[];
+      rawRows: Array<Record<string, string>>;
+      fingerprint: string;
+      suggestedMapping?: MappingState;
+    }
+  | { phase: "ready"; transactions: TransactionUpload[]; mapping: NewColumnMapping; accountId: string }
   | { phase: "uploading" }
   | { phase: "done"; inserted: number; duplicates: number }
   | { phase: "error"; message: string };
@@ -127,7 +132,7 @@ function toDbMapping(mapping: MappingState, fingerprint: string): NewColumnMappi
 function UploadPage() {
   const [fileMap, setFileMap] = useState<Map<string, FileStatus>>(new Map());
   const [sheetPicker, setSheetPicker] = useState<{ file: File; sheetNames: string[] } | null>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [lastUsedAccountId, setLastUsedAccountId] = useState<string | null>(null);
   const uploadMutation = trpc.transactions.upload.useMutation();
   const getMappingUtils = trpc.useUtils();
   const { data: accountsData } = trpc.accounts.list.useQuery();
@@ -146,7 +151,6 @@ function UploadPage() {
   }
 
   async function applyParsedRows(file: File, data: Array<Record<string, string>>, headers: string[]) {
-    if (!selectedAccountId) return;
     const fingerprint = generateFingerprint(headers);
 
     let existing = null;
@@ -156,32 +160,18 @@ function UploadPage() {
       // worker not reachable — treat as unknown fingerprint
     }
 
-    if (existing) {
-      const syntheticMapping: MappingState = {
-        dateCol: existing.dateCol,
-        descriptionCol: existing.descriptionCol,
-        amountCol: existing.amountCol ?? undefined,
-        debitCol: existing.debitCol ?? undefined,
-        creditCol: existing.creditCol ?? undefined,
-        useDebitCredit: Boolean(existing.debitCol && existing.creditCol)
-      };
-      const { transactions: txs, badDateRows } = buildTransactions(
-        data,
-        syntheticMapping,
-        file.name,
-        selectedAccountId
-      );
-      const dbMapping = toDbMapping(syntheticMapping, fingerprint);
-      updateFile(file.name, { phase: "ready", transactions: txs, mapping: dbMapping });
-      toast(`Auto-mapped "${file.name}" from previous upload`);
-      if (badDateRows.length > 0) {
-        toast.warning(
-          `${badDateRows.length} row(s) skipped — unrecognized date format: ${badDateRows.slice(0, 3).join(", ")}${badDateRows.length > 3 ? "…" : ""}`
-        );
-      }
-    } else {
-      updateFile(file.name, { phase: "mapping", headers, rawRows: data, fingerprint });
-    }
+    const suggestedMapping: MappingState | undefined = existing
+      ? {
+          dateCol: existing.dateCol,
+          descriptionCol: existing.descriptionCol,
+          amountCol: existing.amountCol ?? undefined,
+          debitCol: existing.debitCol ?? undefined,
+          creditCol: existing.creditCol ?? undefined,
+          useDebitCredit: Boolean(existing.debitCol && existing.creditCol)
+        }
+      : undefined;
+
+    updateFile(file.name, { phase: "mapping", headers, rawRows: data, fingerprint, suggestedMapping });
   }
 
   async function parseCsvAndContinue(csvStringOrFile: string | File, file: File) {
@@ -279,14 +269,14 @@ function UploadPage() {
     }
   }
 
-  function handleMappingConfirm(fileName: string, mapping: MappingState) {
-    if (!selectedAccountId) return;
+  function handleMappingConfirm(fileName: string, mapping: MappingState, accountId: string) {
     const status = fileMap.get(fileName);
     if (status?.phase !== "mapping") return;
 
-    const { transactions: txs, badDateRows } = buildTransactions(status.rawRows, mapping, fileName, selectedAccountId);
+    const { transactions: txs, badDateRows } = buildTransactions(status.rawRows, mapping, fileName, accountId);
     const dbMapping = toDbMapping(mapping, status.fingerprint);
-    updateFile(fileName, { phase: "ready", transactions: txs, mapping: dbMapping });
+    updateFile(fileName, { phase: "ready", transactions: txs, mapping: dbMapping, accountId });
+    setLastUsedAccountId(accountId);
     if (badDateRows.length > 0) {
       toast.warning(
         `${badDateRows.length} row(s) skipped — unrecognized date format: ${badDateRows.slice(0, 3).join(", ")}${badDateRows.length > 3 ? "…" : ""}`
@@ -295,7 +285,6 @@ function UploadPage() {
   }
 
   async function handleUploadAll() {
-    if (!selectedAccountId) return;
     for (const [fileName, status] of fileMap.entries()) {
       if (status.phase !== "ready") continue;
       updateFile(fileName, { phase: "uploading" });
@@ -304,7 +293,7 @@ function UploadPage() {
           transactions: status.transactions,
           sourceFile: fileName,
           mapping: status.mapping,
-          accountId: selectedAccountId
+          accountId: status.accountId
         });
         updateFile(fileName, {
           phase: "done",
@@ -329,21 +318,17 @@ function UploadPage() {
         <p className="text-muted-foreground">Upload one or more bank statement CSV or XLSX files.</p>
       </div>
 
-      <div className="space-y-1.5">
-        <label className="text-sm font-medium">Account</label>
-        {allAccounts.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            No accounts configured.{" "}
-            <Link to="/accounts" className="underline hover:text-foreground">
-              Add one first →
-            </Link>
-          </p>
-        ) : (
-          <AccountSelector value={selectedAccountId} onChange={setSelectedAccountId} accounts={allAccounts} />
-        )}
-      </div>
+      {allAccounts.length === 0 && (
+        <p className="text-muted-foreground text-sm">
+          No accounts configured.{" "}
+          <Link to="/accounts" className="underline hover:text-foreground">
+            Add one first →
+          </Link>{" "}
+          — you can still upload files, but you'll need an account before you can confirm mapping.
+        </p>
+      )}
 
-      <DropZone onFiles={handleFiles} disabled={!selectedAccountId} />
+      <DropZone onFiles={handleFiles} />
 
       {sheetPicker && (
         <SheetSelector
@@ -378,7 +363,10 @@ function UploadPage() {
                     fileName={name}
                     headers={status.headers}
                     previewRows={status.rawRows.slice(0, 5).map((row) => status.headers.map((h) => row[h] ?? ""))}
-                    onConfirm={(mapping) => handleMappingConfirm(name, mapping)}
+                    accounts={allAccounts}
+                    initialAccountId={lastUsedAccountId}
+                    initialMapping={status.suggestedMapping}
+                    onConfirm={(mapping, accountId) => handleMappingConfirm(name, mapping, accountId)}
                     onCancel={() => updateFile(name, undefined)}
                   />
                 </>

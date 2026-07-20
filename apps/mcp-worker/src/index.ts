@@ -4,21 +4,30 @@ import { McpAgent } from "agents/mcp";
 import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
 
-import * as schema from "@pnl/types";
 import {
   analyzeCardOptimization,
   computeMonthlyPnl,
   computePnlReport,
+  FxRateMissingError,
   getBudgetVariance,
   getCashflowTrend,
   getCategoryList,
   getFinancialHealthSnapshot,
-  getSavingsRateBenchmark,
+  getSettings,
   getSpendingByCategory,
   getTagReportByName,
   getTopMerchants,
+  listFxRates,
   listTagNames,
   listTransactions,
+  searchTransactions,
+  updateSettings,
+  upsertFxRate
+} from "@pnl/db";
+import { getSavingsRateBenchmark } from "@pnl/engine";
+import * as schema from "@pnl/types";
+import {
+  currencyCodeSchema,
   mcpAnalyzeCardOptimizationInputSchema,
   mcpBudgetVarianceInputSchema,
   mcpCashflowTrendInputSchema,
@@ -26,14 +35,35 @@ import {
   mcpSearchTransactionsInputSchema,
   mcpSpendingByCategoryInputSchema,
   mcpTopMerchantsInputSchema,
-  monthFilterSchema,
-  searchTransactions
+  monthFilterSchema
 } from "@pnl/types";
 
 const validator = new CfWorkerJsonSchemaValidator();
 
 function jsonText(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value) }] };
+}
+
+type ToolResult = ReturnType<typeof jsonText> & { isError?: boolean };
+
+// Money aggregates hard-error when an FX rate is missing (ADR-0003). Surface
+// the exact pairs so the user can fix them with set_fx_rate in one message.
+async function withFxError(fn: () => Promise<ToolResult>): Promise<ToolResult> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof FxRateMissingError) {
+      return {
+        ...jsonText({
+          error: err.message,
+          missing_fx_rates: err.missing,
+          hint: "Add the missing monthly rates with the set_fx_rate tool, then retry."
+        }),
+        isError: true
+      };
+    }
+    throw err;
+  }
 }
 
 const MONTH_NAMES = [
@@ -75,6 +105,10 @@ function uncategorizedWarning(count: number, period: string): string | undefined
 export class PnLMcp extends McpAgent<Env> {
   server = new McpServer({ name: "pnl-mcp-worker", version: "0.1.0" }, { jsonSchemaValidator: validator });
 
+  private db() {
+    return drizzle(this.env.DB, { schema });
+  }
+
   async init() {
     this.server.registerTool(
       "ping",
@@ -82,7 +116,7 @@ export class PnLMcp extends McpAgent<Env> {
         description: "Liveness probe: confirms the MCP worker can reach its D1 binding and read the shared schema."
       },
       async () => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         const count = await db.$count(schema.categories);
         return {
           content: [{ type: "text", text: `pong (categories=${count})` }]
@@ -100,14 +134,15 @@ export class PnLMcp extends McpAgent<Env> {
           "months side by side.",
         inputSchema: { year: z.number().int().min(2000).max(2100) }
       },
-      async ({ year }) => {
-        const db = drizzle(this.env.DB, { schema });
-        const report = await computePnlReport(db, year);
-        return jsonText({
-          ...report,
-          warning: uncategorizedWarning(report.uncategorizedCount, String(year))
-        });
-      }
+      async ({ year }) =>
+        withFxError(async () => {
+          const db = this.db();
+          const report = await computePnlReport(db, year);
+          return jsonText({
+            ...report,
+            warning: uncategorizedWarning(report.uncategorizedCount, String(year))
+          });
+        })
     );
 
     this.server.registerTool(
@@ -119,15 +154,16 @@ export class PnLMcp extends McpAgent<Env> {
           "'how did I do in March 2025?'. Month must be formatted as YYYY-MM.",
         inputSchema: { month: monthFilterSchema }
       },
-      async ({ month }) => {
-        const db = drizzle(this.env.DB, { schema });
-        const { pnl, uncategorizedCount } = await computeMonthlyPnl(db, month);
-        return jsonText({
-          ...pnl,
-          uncategorizedCount,
-          warning: uncategorizedWarning(uncategorizedCount, month)
-        });
-      }
+      async ({ month }) =>
+        withFxError(async () => {
+          const db = this.db();
+          const { pnl, uncategorizedCount } = await computeMonthlyPnl(db, month);
+          return jsonText({
+            ...pnl,
+            uncategorizedCount,
+            warning: uncategorizedWarning(uncategorizedCount, month)
+          });
+        })
     );
 
     this.server.registerTool(
@@ -150,24 +186,26 @@ export class PnLMcp extends McpAgent<Env> {
             isError: true
           };
         }
-        const db = drizzle(this.env.DB, { schema });
-        if (month) {
-          const { pnl, uncategorizedCount } = await computeMonthlyPnl(db, month);
+        return withFxError(async () => {
+          const db = this.db();
+          if (month) {
+            const { pnl, uncategorizedCount } = await computeMonthlyPnl(db, month);
+            return jsonText({
+              scope: "month" as const,
+              period: month,
+              savingsRate: pnl.savingsRate,
+              benchmark: getSavingsRateBenchmark(pnl.savingsRate),
+              warning: uncategorizedWarning(uncategorizedCount, month)
+            });
+          }
+          const report = await computePnlReport(db, year as number);
           return jsonText({
-            scope: "month" as const,
-            period: month,
-            savingsRate: pnl.savingsRate,
-            benchmark: getSavingsRateBenchmark(pnl.savingsRate),
-            warning: uncategorizedWarning(uncategorizedCount, month)
+            scope: "year" as const,
+            period: String(year),
+            savingsRate: report.avgMonthlySavingsRate,
+            benchmark: getSavingsRateBenchmark(report.avgMonthlySavingsRate),
+            warning: uncategorizedWarning(report.uncategorizedCount, String(year))
           });
-        }
-        const report = await computePnlReport(db, year as number);
-        return jsonText({
-          scope: "year" as const,
-          period: String(year),
-          savingsRate: report.avgMonthlySavingsRate,
-          benchmark: getSavingsRateBenchmark(report.avgMonthlySavingsRate),
-          warning: uncategorizedWarning(report.uncategorizedCount, String(year))
         });
       }
     );
@@ -180,20 +218,21 @@ export class PnLMcp extends McpAgent<Env> {
           "(income − expenses), and the average monthly savings rate with a HEALTHY/WATCH/DANGER benchmark label. " +
           "No input required. Use this for quick 'how am I doing this year so far?' questions."
       },
-      async () => {
-        const db = drizzle(this.env.DB, { schema });
-        const year = new Date().getUTCFullYear();
-        const report = await computePnlReport(db, year);
-        return jsonText({
-          year,
-          ytdIncome: report.ytdIncome,
-          ytdExpenses: report.ytdExpenses,
-          ytdNet: report.ytdNet,
-          avgMonthlySavingsRate: report.avgMonthlySavingsRate,
-          savingsBenchmark: getSavingsRateBenchmark(report.avgMonthlySavingsRate),
-          warning: uncategorizedWarning(report.uncategorizedCount, String(year))
-        });
-      }
+      async () =>
+        withFxError(async () => {
+          const db = this.db();
+          const year = new Date().getUTCFullYear();
+          const report = await computePnlReport(db, year);
+          return jsonText({
+            year,
+            ytdIncome: report.ytdIncome,
+            ytdExpenses: report.ytdExpenses,
+            ytdNet: report.ytdNet,
+            avgMonthlySavingsRate: report.avgMonthlySavingsRate,
+            savingsBenchmark: getSavingsRateBenchmark(report.avgMonthlySavingsRate),
+            warning: uncategorizedWarning(report.uncategorizedCount, String(year))
+          });
+        })
     );
 
     this.server.registerTool(
@@ -207,7 +246,7 @@ export class PnLMcp extends McpAgent<Env> {
         inputSchema: mcpGetTransactionsInputSchema.shape
       },
       async (input) => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         const result = await listTransactions(db, input);
         return jsonText(result);
       }
@@ -217,16 +256,18 @@ export class PnLMcp extends McpAgent<Env> {
       "get_spending_by_category",
       {
         description:
-          "Return total spend per FIXED and VARIABLE category for a single month, sorted by amount descending. " +
-          "Income and ignored transfers are excluded; CREDIT entries (e.g. refunds) are not counted. Use this when " +
-          "the user asks 'where did my money go in <month>?'. Month must be YYYY-MM.",
+          "Return total spend per FIXED and VARIABLE category for a single month, sorted by amount descending, " +
+          "converted to the base currency. Income and ignored transfers are excluded; every transaction in an " +
+          "expense category counts regardless of bank DEBIT/CREDIT type (refunds live in the Refunds income " +
+          "category). Use this when the user asks 'where did my money go in <month>?'. Month must be YYYY-MM.",
         inputSchema: mcpSpendingByCategoryInputSchema.shape
       },
-      async ({ month }) => {
-        const db = drizzle(this.env.DB, { schema });
-        const result = await getSpendingByCategory(db, month);
-        return jsonText(result);
-      }
+      async ({ month }) =>
+        withFxError(async () => {
+          const db = this.db();
+          const result = await getSpendingByCategory(db, month);
+          return jsonText(result);
+        })
     );
 
     this.server.registerTool(
@@ -239,11 +280,12 @@ export class PnLMcp extends McpAgent<Env> {
           "questions.",
         inputSchema: mcpTopMerchantsInputSchema.shape
       },
-      async (input) => {
-        const db = drizzle(this.env.DB, { schema });
-        const result = await getTopMerchants(db, input);
-        return jsonText(result);
-      }
+      async (input) =>
+        withFxError(async () => {
+          const db = this.db();
+          const result = await getTopMerchants(db, input);
+          return jsonText(result);
+        })
     );
 
     this.server.registerTool(
@@ -256,7 +298,7 @@ export class PnLMcp extends McpAgent<Env> {
         inputSchema: mcpSearchTransactionsInputSchema.shape
       },
       async (input) => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         const result = await searchTransactions(db, input);
         return jsonText({ rows: result });
       }
@@ -274,11 +316,12 @@ export class PnLMcp extends McpAgent<Env> {
           "stitching together multiple queries. Includes a `data_quality` block; warn the user when " +
           "`warning: true` because totals may be incomplete."
       },
-      async () => {
-        const db = drizzle(this.env.DB, { schema });
-        const snapshot = await getFinancialHealthSnapshot(db);
-        return jsonText(snapshot);
-      }
+      async () =>
+        withFxError(async () => {
+          const db = this.db();
+          const snapshot = await getFinancialHealthSnapshot(db);
+          return jsonText(snapshot);
+        })
     );
 
     this.server.registerTool(
@@ -294,11 +337,12 @@ export class PnLMcp extends McpAgent<Env> {
           "Includes a `data_quality` block covering the trailing 3 months plus the requested month.",
         inputSchema: mcpBudgetVarianceInputSchema.shape
       },
-      async ({ month }) => {
-        const db = drizzle(this.env.DB, { schema });
-        const result = await getBudgetVariance(db, month);
-        return jsonText(result);
-      }
+      async ({ month }) =>
+        withFxError(async () => {
+          const db = this.db();
+          const result = await getBudgetVariance(db, month);
+          return jsonText(result);
+        })
     );
 
     this.server.registerTool(
@@ -313,11 +357,12 @@ export class PnLMcp extends McpAgent<Env> {
           "the requested window.",
         inputSchema: mcpCashflowTrendInputSchema.shape
       },
-      async ({ months }) => {
-        const db = drizzle(this.env.DB, { schema });
-        const result = await getCashflowTrend(db, months);
-        return jsonText(result);
-      }
+      async ({ months }) =>
+        withFxError(async () => {
+          const db = this.db();
+          const result = await getCashflowTrend(db, months);
+          return jsonText(result);
+        })
     );
 
     this.server.registerTool(
@@ -331,7 +376,7 @@ export class PnLMcp extends McpAgent<Env> {
           "computed across all transactions so you can warn the user when categorization coverage is poor."
       },
       async () => {
-        const db = drizzle(this.env.DB, { schema });
+        const db = this.db();
         const result = await getCategoryList(db);
         return jsonText(result);
       }
@@ -350,11 +395,12 @@ export class PnLMcp extends McpAgent<Env> {
           "currency independently — DO NOT add cashback dollars and points together. Read-only.",
         inputSchema: mcpAnalyzeCardOptimizationInputSchema.shape
       },
-      async ({ startMonth, endMonth }) => {
-        const db = drizzle(this.env.DB, { schema });
-        const result = await analyzeCardOptimization(db, startMonth, endMonth);
-        return jsonText(result);
-      }
+      async ({ startMonth, endMonth }) =>
+        withFxError(async () => {
+          const db = this.db();
+          const result = await analyzeCardOptimization(db, startMonth, endMonth);
+          return jsonText(result);
+        })
     );
 
     this.server.registerTool(
@@ -365,33 +411,98 @@ export class PnLMcp extends McpAgent<Env> {
           "about the cost of trips, projects, or events. Supports partial and case-insensitive name matching.",
         inputSchema: { tag_name: z.string().trim().min(1) }
       },
-      async ({ tag_name }) => {
-        const db = drizzle(this.env.DB, { schema });
-        const result = await getTagReportByName(db, tag_name);
+      async ({ tag_name }) =>
+        withFxError(async () => {
+          const db = this.db();
+          const result = await getTagReportByName(db, tag_name);
 
-        if (!result) {
-          const availableTags = await listTagNames(db);
+          if (!result) {
+            const availableTags = await listTagNames(db);
+            return jsonText({
+              error: `No tag matches "${tag_name}". Use one of the available tags or a partial name.`,
+              available_tags: availableTags
+            });
+          }
+
+          const { report, availableTags } = result;
           return jsonText({
-            error: `No tag matches "${tag_name}". Use one of the available tags or a partial name.`,
+            matched_tag: report.tag.name,
+            date_range: formatDateRange(report.dateRange),
+            total_spend: report.totalSpend,
+            total_income: report.totalIncome,
+            net: report.net,
+            by_category: report.byCategory.map((c) => ({
+              name: c.categoryName,
+              group: c.groupType,
+              total: c.total
+            })),
+            transaction_count: report.transactions.length,
             available_tags: availableTags
           });
-        }
+        })
+    );
 
-        const { report, availableTags } = result;
-        return jsonText({
-          matched_tag: report.tag.name,
-          date_range: formatDateRange(report.dateRange),
-          total_spend: report.totalSpend,
-          total_income: report.totalIncome,
-          net: report.net,
-          by_category: report.byCategory.map((c) => ({
-            name: c.categoryName,
-            group: c.groupType,
-            total: c.total
-          })),
-          transaction_count: report.transactions.length,
-          available_tags: availableTags
-        });
+    this.server.registerTool(
+      "get_base_currency",
+      {
+        description:
+          "Return the base (reporting) currency all P&L aggregates are converted into, e.g. 'MXN'. " +
+          "Raw transaction rows keep their account's original currency."
+      },
+      async () => {
+        const db = this.db();
+        return jsonText(await getSettings(db));
+      }
+    );
+
+    this.server.registerTool(
+      "set_base_currency",
+      {
+        description:
+          "Change the base (reporting) currency (ISO 4217 code, e.g. 'MXN' or 'USD'). FX rates are keyed by " +
+          "currency pair, so switching base requires rates for the new base to exist before reports work again.",
+        inputSchema: { baseCurrency: currencyCodeSchema }
+      },
+      async ({ baseCurrency }) => {
+        const db = this.db();
+        return jsonText(await updateSettings(db, { baseCurrency }));
+      }
+    );
+
+    this.server.registerTool(
+      "list_fx_rates",
+      {
+        description:
+          "List the manually maintained monthly FX rates for the current base currency, newest month first. " +
+          "Each rate means 'base units per 1 unit of the foreign currency' for that month."
+      },
+      async () => {
+        const db = this.db();
+        return jsonText(await listFxRates(db));
+      }
+    );
+
+    this.server.registerTool(
+      "set_fx_rate",
+      {
+        description:
+          "Create or update the FX rate for one month and foreign currency, expressed as base units per 1 unit " +
+          "of that currency (e.g. month '2026-03', currency 'USD', rate 17.25 when the base is MXN). Reports " +
+          "recompute from stored transactions, so corrections apply retroactively. Use this to fix the " +
+          "missing_fx_rates pairs reported by other tools.",
+        inputSchema: {
+          month: monthFilterSchema,
+          currency: currencyCodeSchema,
+          rate: z.number().positive()
+        }
+      },
+      async ({ month, currency, rate }) => {
+        const db = this.db();
+        try {
+          return jsonText(await upsertFxRate(db, { month, currency, rate }));
+        } catch (err) {
+          return { ...jsonText({ error: err instanceof Error ? err.message : String(err) }), isError: true };
+        }
       }
     );
   }

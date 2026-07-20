@@ -22,6 +22,7 @@ import { TagFilterSelect } from "@/components/tags/TagFilterSelect";
 import { TagPicker } from "@/components/tags/TagPicker";
 import { TagPill } from "@/components/tags/TagPill";
 import { getContrastColor } from "@/lib/color";
+import { formatCurrency } from "@/lib/pnl-helpers";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 
@@ -47,8 +48,8 @@ type MerchantRow = {
   merchantKey: string;
   txIds: string[];
   displayName: string;
-  totalDebits: number;
-  totalCredits: number;
+  /** Debit/credit subtotals per original currency — never summed across currencies. */
+  totals: Array<{ currency: string; debits: number; credits: number }>;
 };
 
 type TxRow = {
@@ -64,10 +65,6 @@ type FlatRow = MerchantRow | TxRow;
 
 const GRID =
   "grid-cols-[20px_minmax(0,1fr)_96px_minmax(160px,260px)] sm:grid-cols-[20px_minmax(0,1fr)_80px_100px_minmax(220px,1fr)]";
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
-}
 
 function formatDate(date: string): string {
   const [y, m, d] = date.split("-").map(Number);
@@ -285,8 +282,12 @@ function MerchantHeaderRow({
       </button>
       <span />
       <span className="text-right text-xs tabular-nums">
-        {row.totalDebits > 0 && <span className="block text-destructive">-{formatCurrency(row.totalDebits)}</span>}
-        {row.totalCredits > 0 && <span className="block text-income">+{formatCurrency(row.totalCredits)}</span>}
+        {row.totals.map((t) => (
+          <span key={t.currency}>
+            {t.debits > 0 && <span className="block text-destructive">-{formatCurrency(t.debits, t.currency)}</span>}
+            {t.credits > 0 && <span className="block text-income">+{formatCurrency(t.credits, t.currency)}</span>}
+          </span>
+        ))}
       </span>
       <span className="hidden sm:block" />
     </div>
@@ -333,7 +334,7 @@ function TransactionRow({
       <span className="hidden text-xs text-muted-foreground sm:block">{formatDate(tx.date)}</span>
       <span className={cn("text-right text-sm tabular-nums", tx.type === "DEBIT" ? "text-destructive" : "text-income")}>
         {tx.type === "DEBIT" ? "-" : "+"}
-        {formatCurrency(tx.amount)}
+        {formatCurrency(tx.amount, tx.currency)}
       </span>
       <span className="hidden min-w-0 items-center gap-1.5 overflow-hidden sm:flex">
         {tx.categoryId != null ? (
@@ -565,15 +566,22 @@ function CategorizePage() {
     const rows: FlatRow[] = [];
     for (const [key, txs] of groups) {
       const txIds = txs.map((t) => t.id);
-      const totalDebits = txs.filter((t) => t.type === "DEBIT").reduce((s, t) => s + t.amount, 0);
-      const totalCredits = txs.filter((t) => t.type === "CREDIT").reduce((s, t) => s + t.amount, 0);
+      const byCurrency = new Map<string, { debits: number; credits: number }>();
+      for (const t of txs) {
+        const bucket = byCurrency.get(t.currency) ?? { debits: 0, credits: 0 };
+        if (t.type === "DEBIT") bucket.debits += t.amount;
+        else bucket.credits += t.amount;
+        byCurrency.set(t.currency, bucket);
+      }
+      const totals = [...byCurrency.entries()]
+        .map(([currency, sums]) => ({ currency, ...sums }))
+        .sort((a, b) => a.currency.localeCompare(b.currency));
       rows.push({
         kind: "merchant-header",
         merchantKey: key,
         txIds,
         displayName: txs[0]!.description.trim(),
-        totalDebits,
-        totalCredits
+        totals
       });
       if (expandedMerchants.has(key)) {
         for (const tx of txs) rows.push({ kind: "transaction", tx });

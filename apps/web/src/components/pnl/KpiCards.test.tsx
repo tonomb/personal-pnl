@@ -20,6 +20,7 @@ const mockUseQuery = trpc.pnl.getKpis.useQuery as ReturnType<typeof vi.fn>;
 
 const aMonth: MonthlyPnL = {
   month: "2024-03",
+  currency: "MXN",
   income: { total: 3000, items: [] },
   fixed: { total: 1000, items: [] },
   variable: { total: 500, items: [] },
@@ -30,6 +31,7 @@ const aMonth: MonthlyPnL = {
 
 const aKpiSummary: KpiSummary = {
   month: "2024-03",
+  currency: "MXN",
   net: 1500,
   netLabel: "IN_THE_GREEN",
   savingsRate: 0.5,

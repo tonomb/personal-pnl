@@ -1,19 +1,21 @@
-import { initTRPC } from "@trpc/server";
+import type { Account, CardBenefit, Category, CategoryGroup, Tag } from "./schema";
 
-import type {
-  Account,
-  CardBenefit,
-  Category,
-  ColumnMapping,
-  NewColumnMapping,
-  NewTransaction,
-  Tag,
-  Transaction
-} from "./schema";
+// ---------------------------------------------------------------------------
+// API/DTO types shared between the worker and the web app.
+//
+// Money fields are ALWAYS major units (≤2dp numbers) — cents never cross the
+// API (ADR-0001). Aggregate DTOs carry the currency they are denominated in
+// (the user's base currency, ADR-0003); raw transaction rows carry their
+// account's original currency.
+//
+// The `AppRouter` type is exported by the worker (`pnl-api/router`) and
+// derived from the real router — there is deliberately no hand-mirrored
+// router here.
+// ---------------------------------------------------------------------------
 
 export type UpsertCardBenefitInput = {
   accountId: string;
-  categoryGroup: "INCOME" | "FIXED" | "VARIABLE" | "IGNORED";
+  categoryGroup: CategoryGroup;
   rewardType: "CASHBACK" | "POINTS";
   rewardRate: number;
   notes?: string | null;
@@ -21,7 +23,17 @@ export type UpsertCardBenefitInput = {
 
 export type AccountWithBenefits = Account & { benefits: CardBenefit[] };
 
-export type TransactionWithCategory = Transaction & {
+/** A transaction row as the API returns it: amount in major units of `currency`. */
+export type TransactionWithCategory = {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  currency: string;
+  type: "DEBIT" | "CREDIT";
+  categoryId: number | null;
+  sourceFile: string | null;
+  createdAt: string;
   categoryName: string | null;
   categoryGroupType: string | null;
   categoryColor: string | null;
@@ -37,10 +49,24 @@ export type TagReportCategoryBreakdown = {
   total: number;
 };
 
-export type TagReportTransaction = Transaction & { tags: Tag[] };
+export type TagReportTransaction = {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  currency: string;
+  type: "DEBIT" | "CREDIT";
+  categoryId: number | null;
+  accountId: string;
+  sourceFile: string | null;
+  rawRow: string | null;
+  createdAt: string;
+  tags: Tag[];
+};
 
 export type TagReport = {
   tag: Tag;
+  currency: string;
   totalIncome: number;
   totalSpend: number;
   net: number;
@@ -57,6 +83,11 @@ export type GroupedTransaction = {
   categoryName: string | null;
   categoryGroupType: string | null;
   categoryColor: string | null;
+};
+
+export type GroupedTransactionsResult = {
+  currency: string;
+  rows: GroupedTransaction[];
 };
 
 export type TransactionListFilter = {
@@ -88,6 +119,7 @@ export type MonthGroup = {
 
 export type MonthlyPnL = {
   month: string;
+  currency: string;
   income: MonthGroup;
   fixed: MonthGroup;
   variable: MonthGroup;
@@ -97,6 +129,7 @@ export type MonthlyPnL = {
 };
 
 export type PnLReport = {
+  currency: string;
   months: MonthlyPnL[];
   ytdIncome: number;
   ytdExpenses: number;
@@ -107,6 +140,7 @@ export type PnLReport = {
 
 export type KpiSummary = {
   month: string;
+  currency: string;
   net: number;
   netLabel: "IN_THE_GREEN" | "IN_THE_RED" | "NEUTRAL";
   savingsRate: number | null;
@@ -115,139 +149,19 @@ export type KpiSummary = {
   vsLastMonth: { delta: number; label: "BETTER" | "WORSE" | "SAME" } | null;
 };
 
-const t = initTRPC.create();
+/** Categories grouped for pickers. */
+export type CategoriesByGroup = {
+  INCOME: Category[];
+  FIXED: Category[];
+  VARIABLE: Category[];
+  IGNORED: Category[];
+};
 
-const router = t.router;
-const publicProcedure = t.procedure;
+/** A (month, currency) pair — the granularity FX rates are keyed at (ADR-0003). */
+export type MonthCurrencyPair = {
+  month: string;
+  currency: string;
+};
 
-export const appRouter = router({
-  health: router({
-    ping: publicProcedure.query(() => ({ pong: true as const }))
-  }),
-  categories: router({
-    list: publicProcedure
-      .input((v: unknown) => v as void)
-      .query(
-        (): { INCOME: Category[]; FIXED: Category[]; VARIABLE: Category[]; IGNORED: Category[] } =>
-          null as unknown as {
-            INCOME: Category[];
-            FIXED: Category[];
-            VARIABLE: Category[];
-            IGNORED: Category[];
-          }
-      ),
-    create: publicProcedure
-      .input((v: unknown) => v as { name: string; groupType: string; color?: string | null })
-      .mutation((): Category => null as unknown as Category),
-    update: publicProcedure
-      .input(
-        (v: unknown) =>
-          v as {
-            id: number;
-            name?: string;
-            groupType?: "INCOME" | "FIXED" | "VARIABLE" | "IGNORED";
-            color?: string | null;
-            sortOrder?: number;
-          }
-      )
-      .mutation((): Category => null as unknown as Category),
-    delete: publicProcedure
-      .input((v: unknown) => v as { id: number })
-      .mutation((): { deletedId: number } => ({ deletedId: 0 }))
-  }),
-  tags: router({
-    list: publicProcedure
-      .input((v: unknown) => v as void)
-      .query((): TagWithCount[] => null as unknown as TagWithCount[]),
-    create: publicProcedure
-      .input((v: unknown) => v as { name: string; color: string })
-      .mutation((): Tag => null as unknown as Tag),
-    delete: publicProcedure
-      .input((v: unknown) => v as { id: string })
-      .mutation((): { deletedId: string } => ({ deletedId: "" })),
-    assignToTransactions: publicProcedure
-      .input((v: unknown) => v as { tagId: string; transactionIds: string[] })
-      .mutation((): { assigned: number } => ({ assigned: 0 })),
-    removeFromTransactions: publicProcedure
-      .input((v: unknown) => v as { tagId: string; transactionIds: string[] })
-      .mutation((): { removed: number } => ({ removed: 0 })),
-    getReport: publicProcedure
-      .input((v: unknown) => v as { tagId: string })
-      .query((): TagReport => null as unknown as TagReport),
-    getReportByName: publicProcedure
-      .input((v: unknown) => v as { name: string })
-      .query((): TagReport => null as unknown as TagReport)
-  }),
-  transactions: router({
-    list: publicProcedure
-      .input((v: unknown) => v as TransactionListInput)
-      .query((): TransactionListResult => null as unknown as TransactionListResult),
-    grouped: publicProcedure
-      .input((v: unknown) => v as TransactionListFilter | undefined)
-      .query((): GroupedTransaction[] => null as unknown as GroupedTransaction[]),
-    categorize: publicProcedure
-      .input((v: unknown) => v as { ids: string[]; categoryId: number | null })
-      .mutation((): { updated: number } => ({ updated: 0 })),
-    getMapping: publicProcedure
-      .input((v: unknown) => v as { fingerprint: string })
-      .query((): ColumnMapping | null => null as unknown as ColumnMapping | null),
-    upload: publicProcedure
-      .input(
-        (v: unknown) =>
-          v as {
-            transactions: NewTransaction[];
-            sourceFile: string;
-            mapping: NewColumnMapping;
-            accountId: string;
-          }
-      )
-      .mutation((): { inserted: number; duplicates: number } => ({ inserted: 0, duplicates: 0 }))
-  }),
-  cardBenefits: router({
-    list: publicProcedure.input((v: unknown) => v as void).query((): CardBenefit[] => null as unknown as CardBenefit[]),
-    upsert: publicProcedure
-      .input((v: unknown) => v as UpsertCardBenefitInput)
-      .mutation((): CardBenefit => null as unknown as CardBenefit)
-  }),
-  accounts: router({
-    list: publicProcedure
-      .input((v: unknown) => v as void)
-      .query((): AccountWithBenefits[] => null as unknown as AccountWithBenefits[]),
-    create: publicProcedure
-      .input(
-        (v: unknown) => v as { name: string; institution: string; type: string; last4?: string | null; color?: string }
-      )
-      .mutation((): AccountWithBenefits => null as unknown as AccountWithBenefits),
-    update: publicProcedure
-      .input(
-        (v: unknown) =>
-          v as { id: string; name?: string; institution?: string; type?: string; last4?: string | null; color?: string }
-      )
-      .mutation((): Account => null as unknown as Account),
-    delete: publicProcedure
-      .input((v: unknown) => v as { id: string })
-      .mutation((): { deletedId: string } => ({ deletedId: "" })),
-    addBenefit: publicProcedure
-      .input((v: unknown) => v as { accountId: string; categoryGroup: string; rewardType: string; rewardRate: number })
-      .mutation((): CardBenefit => null as unknown as CardBenefit),
-    updateBenefit: publicProcedure
-      .input((v: unknown) => v as { id: string; categoryGroup?: string; rewardType?: string; rewardRate?: number })
-      .mutation((): CardBenefit => null as unknown as CardBenefit),
-    deleteBenefit: publicProcedure
-      .input((v: unknown) => v as { id: string })
-      .mutation((): { deletedId: string } => ({ deletedId: "" }))
-  }),
-  pnl: router({
-    getReport: publicProcedure
-      .input((v: unknown) => v as { year: number })
-      .query((): PnLReport => null as unknown as PnLReport),
-    getMonth: publicProcedure
-      .input((v: unknown) => v as { month: string })
-      .query((): MonthlyPnL => null as unknown as MonthlyPnL),
-    getKpis: publicProcedure
-      .input((v: unknown) => v as { month: string })
-      .query((): KpiSummary => null as unknown as KpiSummary)
-  })
-});
-
-export type AppRouter = typeof appRouter;
+/** A needed pair with no fx_rates row — reports hard-error on these (ADR-0003). */
+export type MissingFxRate = MonthCurrencyPair;

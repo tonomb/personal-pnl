@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatCurrency } from "@/lib/pnl-helpers";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { sumAmounts } from "@pnl/money";
 
 import type { TagReportCategoryBreakdown } from "@pnl/types";
 
@@ -31,7 +32,7 @@ function groupBySection(items: TagReportCategoryBreakdown[]) {
 }
 
 function sumTotal(items: TagReportCategoryBreakdown[]): number {
-  return items.reduce((acc, c) => acc + c.total, 0);
+  return sumAmounts(items.map((c) => c.total));
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +52,15 @@ function SectionHeaderRow({ label }: { label: string }) {
   );
 }
 
-function CategorySection({ label, items }: { label: string; items: TagReportCategoryBreakdown[] }) {
+function CategorySection({
+  label,
+  items,
+  currency
+}: {
+  label: string;
+  items: TagReportCategoryBreakdown[];
+  currency: string;
+}) {
   if (items.length === 0) return null;
   const subtotal = sumTotal(items);
   return (
@@ -60,12 +69,12 @@ function CategorySection({ label, items }: { label: string; items: TagReportCate
       {items.map((cat) => (
         <TableRow key={cat.categoryId}>
           <TableCell className="pl-6">{cat.categoryName}</TableCell>
-          <TableCell className="text-right tabular-nums">{formatCurrency(cat.total)}</TableCell>
+          <TableCell className="text-right tabular-nums">{formatCurrency(cat.total, currency)}</TableCell>
         </TableRow>
       ))}
       <TableRow className="font-semibold hover:bg-muted/30">
         <TableCell className="bg-muted/30 pl-3">Total {label}</TableCell>
-        <TableCell className="bg-muted/30 text-right tabular-nums">{formatCurrency(subtotal)}</TableCell>
+        <TableCell className="bg-muted/30 text-right tabular-nums">{formatCurrency(subtotal, currency)}</TableCell>
       </TableRow>
     </>
   );
@@ -116,13 +125,13 @@ export function TagDetailPage({ tagId }: Props) {
           <div>
             <p className="text-xs text-muted-foreground">Spend</p>
             <p data-testid="tag-detail-spend" className="text-lg font-semibold tabular-nums text-destructive">
-              {formatCurrency(report.totalSpend)}
+              {formatCurrency(report.totalSpend, report.currency)}
             </p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Income</p>
             <p data-testid="tag-detail-income" className="text-lg font-semibold tabular-nums text-income">
-              {formatCurrency(report.totalIncome)}
+              {formatCurrency(report.totalIncome, report.currency)}
             </p>
           </div>
           <div>
@@ -134,7 +143,7 @@ export function TagDetailPage({ tagId }: Props) {
                 report.net > 0 ? "text-income" : report.net < 0 ? "text-destructive" : "text-muted-foreground"
               )}
             >
-              {formatCurrency(report.net)}
+              {formatCurrency(report.net, report.currency)}
             </p>
           </div>
           {report.dateRange && (
@@ -167,9 +176,9 @@ export function TagDetailPage({ tagId }: Props) {
               </TableRow>
             ) : (
               <>
-                <CategorySection label="INCOME" items={income} />
-                <CategorySection label="FIXED" items={fixed} />
-                <CategorySection label="VARIABLE" items={variable} />
+                <CategorySection label="INCOME" items={income} currency={report.currency} />
+                <CategorySection label="FIXED" items={fixed} currency={report.currency} />
+                <CategorySection label="VARIABLE" items={variable} currency={report.currency} />
               </>
             )}
           </TableBody>
@@ -207,7 +216,7 @@ export function TagDetailPage({ tagId }: Props) {
                   )}
                 >
                   {tx.type === "CREDIT" ? "+" : "−"}
-                  {formatCurrency(tx.amount)}
+                  {formatCurrency(tx.amount, tx.currency)}
                 </TableCell>
               </TableRow>
             ))}

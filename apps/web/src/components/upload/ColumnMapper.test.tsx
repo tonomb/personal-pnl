@@ -15,6 +15,7 @@ const ACCOUNTS: AccountWithBenefits[] = [
     name: "Checking",
     institution: "Bank",
     type: "CHECKING",
+    currency: "MXN",
     last4: "1234",
     color: "#3b82f6",
     createdAt: "2024-01-01T00:00:00.000Z",

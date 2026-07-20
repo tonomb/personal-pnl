@@ -1,11 +1,15 @@
 -- Idempotent: clears and re-inserts the canonical seed data.
+-- settings — single row holding the base (reporting) currency (ADR-0003).
+INSERT INTO settings (id, base_currency) VALUES (1, 'MXN')
+  ON CONFLICT(id) DO NOTHING;
+
 -- accounts — clear card_benefits first (FK), then accounts.
 DELETE FROM card_benefits WHERE account_id IN ('seed-account-chase-sapphire', 'seed-account-amex-gold');
 DELETE FROM accounts WHERE id IN ('seed-account-chase-sapphire', 'seed-account-amex-gold');
 
-INSERT INTO accounts (id, name, institution, type, last4, color, created_at) VALUES
-  ('seed-account-chase-sapphire', 'Chase Sapphire Reserve', 'Chase', 'CREDIT', '1234', '#3b82f6', datetime('now')),
-  ('seed-account-amex-gold',      'Amex Gold Card',         'Amex',  'CREDIT', '5678', '#f59e0b', datetime('now'));
+INSERT INTO accounts (id, name, institution, type, currency, last4, color, created_at) VALUES
+  ('seed-account-chase-sapphire', 'Chase Sapphire Reserve', 'Chase', 'CREDIT', 'MXN', '1234', '#3b82f6', datetime('now')),
+  ('seed-account-amex-gold',      'Amex Gold Card',         'Amex',  'CREDIT', 'MXN', '5678', '#f59e0b', datetime('now'));
 
 INSERT INTO card_benefits (id, account_id, category_group, reward_type, reward_rate, notes, created_at) VALUES
   ('seed-cb-chase-variable', 'seed-account-chase-sapphire', 'VARIABLE', 'POINTS', 3.0, '3x on dining & travel', datetime('now')),
@@ -23,7 +27,10 @@ INSERT INTO categories (id, name, group_type, is_default, color, sort_order) VAL
   (3, 'Investment Income',      'INCOME',   1, '#22c55e', 30),
   (4, 'Rental Income',          'INCOME',   1, '#22c55e', 40),
   (5, 'Business Income',        'INCOME',   1, '#22c55e', 50),
-  (6, 'Other Income',           'INCOME',   1, '#22c55e', 60);
+  (6, 'Other Income',           'INCOME',   1, '#22c55e', 60),
+  -- Refunds are income by convention (ADR-0002): money back for a prior
+  -- expense is categorized here, never as negative spend.
+  (7, 'Refunds',                'INCOME',   1, '#22c55e', 70);
 
 -- FIXED — red (#ef4444)
 INSERT INTO categories (id, name, group_type, is_default, color, sort_order) VALUES

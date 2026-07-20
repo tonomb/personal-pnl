@@ -2,18 +2,9 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { getSpendingByCategory, getTopMerchants, listTransactions, searchTransactions } from "@pnl/db";
 import * as schema from "@pnl/types";
-import {
-  accounts,
-  cardBenefits,
-  categories,
-  columnMappings,
-  getSpendingByCategory,
-  getTopMerchants,
-  listTransactions,
-  searchTransactions,
-  transactions
-} from "@pnl/types";
+import { accounts, cardBenefits, categories, columnMappings, fxRates, settings, transactions } from "@pnl/types";
 
 const TEST_ACCOUNT_ID = "test-account-00000000-0000-0000-0000";
 
@@ -28,6 +19,8 @@ beforeEach(async () => {
   await db.delete(cardBenefits);
   await db.delete(accounts);
   await db.delete(categories);
+  await db.delete(fxRates);
+  await db.delete(settings);
   await db.insert(accounts).values({
     id: TEST_ACCOUNT_ID,
     name: "Test Bank",
@@ -38,11 +31,12 @@ beforeEach(async () => {
   });
 });
 
-const baseTx = (overrides: Partial<typeof transactions.$inferInsert>) => ({
+// Fixtures are written in major units; storage is integer cents (ADR-0001).
+const baseTx = ({ amount = 4.5, ...overrides }: Partial<typeof transactions.$inferInsert> & { amount?: number }) => ({
   id: "tx-1",
   date: "2024-01-15",
   description: "Coffee",
-  amount: 4.5,
+  amountCents: Math.round(amount * 100),
   type: "DEBIT" as const,
   accountId: TEST_ACCOUNT_ID,
   sourceFile: "bank.csv",
@@ -146,13 +140,13 @@ describe("listTransactions", () => {
     expect(result.total).toBe(2);
     expect(result.rows.map((r) => r.id)).toEqual(["tx-new", "tx-old"]);
     expect(Object.keys(result.rows[0]!).sort()).toEqual(
-      ["amount", "categoryId", "categoryName", "date", "description", "id", "type"].sort()
+      ["amount", "categoryId", "categoryName", "currency", "date", "description", "id", "type"].sort()
     );
   });
 });
 
 describe("getSpendingByCategory", () => {
-  it("sums DEBIT amounts per FIXED/VARIABLE category for the month, sorted desc", async () => {
+  it("sums amounts per FIXED/VARIABLE category for the month, sorted desc", async () => {
     const db = makeDb();
     const [groceries] = await db.insert(categories).values({ name: "Groceries", groupType: "VARIABLE" }).returning();
     const [rent] = await db.insert(categories).values({ name: "Rent", groupType: "FIXED" }).returning();
@@ -166,7 +160,8 @@ describe("getSpendingByCategory", () => {
 
     const result = await getSpendingByCategory(db, "2024-01");
 
-    expect(result).toEqual([
+    expect(result.currency).toBe("MXN");
+    expect(result.rows).toEqual([
       { categoryId: rent!.id, categoryName: "Rent", groupType: "FIXED", total: 1200 },
       { categoryId: groceries!.id, categoryName: "Groceries", groupType: "VARIABLE", total: 100 }
     ]);
@@ -187,22 +182,27 @@ describe("getSpendingByCategory", () => {
 
     const result = await getSpendingByCategory(db, "2024-01");
 
-    expect(result.map((r) => r.categoryName)).toEqual(["Food"]);
+    expect(result.rows.map((r) => r.categoryName)).toEqual(["Food"]);
   });
 
-  it("ignores CREDIT amounts even on FIXED/VARIABLE categories (e.g. refunds)", async () => {
+  it("counts CREDIT-typed rows in expense categories toward spend (ADR-0002/LAG-46)", async () => {
+    // Bank type is provenance only; a credit-card charge imported as CREDIT
+    // still belongs to the category's total. Actual refunds go to the
+    // "Refunds" INCOME category instead.
     const db = makeDb();
     const [shopping] = await db.insert(categories).values({ name: "Shopping", groupType: "VARIABLE" }).returning();
     await db
       .insert(transactions)
       .values([
         baseTx({ id: "buy", amount: 100, type: "DEBIT", categoryId: shopping!.id }),
-        baseTx({ id: "refund", date: "2024-01-20", amount: 30, type: "CREDIT", categoryId: shopping!.id })
+        baseTx({ id: "cc-charge", date: "2024-01-20", amount: 30, type: "CREDIT", categoryId: shopping!.id })
       ]);
 
     const result = await getSpendingByCategory(db, "2024-01");
 
-    expect(result).toEqual([{ categoryId: shopping!.id, categoryName: "Shopping", groupType: "VARIABLE", total: 100 }]);
+    expect(result.rows).toEqual([
+      { categoryId: shopping!.id, categoryName: "Shopping", groupType: "VARIABLE", total: 130 }
+    ]);
   });
 
   it("filters by month — does not bleed across months", async () => {
@@ -217,12 +217,12 @@ describe("getSpendingByCategory", () => {
 
     const result = await getSpendingByCategory(db, "2024-01");
 
-    expect(result).toEqual([{ categoryId: food!.id, categoryName: "Food", groupType: "VARIABLE", total: 50 }]);
+    expect(result.rows).toEqual([{ categoryId: food!.id, categoryName: "Food", groupType: "VARIABLE", total: 50 }]);
   });
 
-  it("returns empty array when no spending in the month", async () => {
+  it("returns empty rows when no spending in the month", async () => {
     const result = await getSpendingByCategory(makeDb(), "2024-01");
-    expect(result).toEqual([]);
+    expect(result.rows).toEqual([]);
   });
 });
 
@@ -239,7 +239,8 @@ describe("getTopMerchants", () => {
 
     const result = await getTopMerchants(db, {});
 
-    expect(result).toEqual([
+    expect(result.currency).toBe("MXN");
+    expect(result.rows).toEqual([
       { merchant: "UBER", count: 1, total: 50 },
       { merchant: "STARBUCKS", count: 2, total: 12 }
     ]);
@@ -257,7 +258,7 @@ describe("getTopMerchants", () => {
 
     const result = await getTopMerchants(db, {});
 
-    expect(result).toEqual([{ merchant: "COFFEE", count: 3, total: 15 }]);
+    expect(result.rows).toEqual([{ merchant: "COFFEE", count: 3, total: 15 }]);
   });
 
   it("filters by month when provided", async () => {
@@ -271,7 +272,7 @@ describe("getTopMerchants", () => {
 
     const result = await getTopMerchants(db, { month: "2024-01" });
 
-    expect(result).toEqual([{ merchant: "LYFT", count: 1, total: 20 }]);
+    expect(result.rows).toEqual([{ merchant: "LYFT", count: 1, total: 20 }]);
   });
 
   it("respects the limit parameter", async () => {
@@ -286,7 +287,7 @@ describe("getTopMerchants", () => {
 
     const result = await getTopMerchants(db, { limit: 2 });
 
-    expect(result.map((r) => r.merchant)).toEqual(["A", "B"]);
+    expect(result.rows.map((r) => r.merchant)).toEqual(["A", "B"]);
   });
 });
 

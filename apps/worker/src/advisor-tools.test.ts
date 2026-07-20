@@ -2,19 +2,15 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import * as schema from "@pnl/types";
 import {
-  accounts,
   analyzeCardOptimization,
-  cardBenefits,
-  categories,
-  columnMappings,
   getBudgetVariance,
   getCashflowTrend,
   getCategoryList,
-  getFinancialHealthSnapshot,
-  transactions
-} from "@pnl/types";
+  getFinancialHealthSnapshot
+} from "@pnl/db";
+import * as schema from "@pnl/types";
+import { accounts, cardBenefits, categories, columnMappings, fxRates, settings, transactions } from "@pnl/types";
 
 const TEST_ACCOUNT_ID = "test-account-00000000-0000-0000-0000";
 
@@ -29,6 +25,8 @@ beforeEach(async () => {
   await db.delete(cardBenefits);
   await db.delete(accounts);
   await db.delete(categories);
+  await db.delete(fxRates);
+  await db.delete(settings);
   await db.insert(accounts).values({
     id: TEST_ACCOUNT_ID,
     name: "Test Bank",
@@ -39,11 +37,12 @@ beforeEach(async () => {
   });
 });
 
-const baseTx = (overrides: Partial<typeof transactions.$inferInsert>) => ({
+// Fixtures are written in major units; storage is integer cents (ADR-0001).
+const baseTx = ({ amount = 4.5, ...overrides }: Partial<typeof transactions.$inferInsert> & { amount?: number }) => ({
   id: "tx-1",
   date: "2024-01-15",
   description: "Coffee",
-  amount: 4.5,
+  amountCents: Math.round(amount * 100),
   type: "DEBIT" as const,
   accountId: TEST_ACCOUNT_ID,
   sourceFile: "bank.csv",

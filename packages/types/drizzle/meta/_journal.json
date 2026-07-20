@@ -36,6 +36,13 @@
       "when": 1778026182244,
       "tag": "0005_gifted_blacklash",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783887409895,
+      "tag": "0006_amount_cents_multicurrency",
+      "breakpoints": true
     }
   ]
 }

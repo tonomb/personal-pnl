@@ -2,17 +2,9 @@ import { env } from "cloudflare:test";
 import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { getTagReportByName, listTagNames } from "@pnl/db";
 import * as schema from "@pnl/types";
-import {
-  accounts,
-  cardBenefits,
-  categories,
-  getTagReportByName,
-  listTagNames,
-  tags,
-  transactionTags,
-  transactions
-} from "@pnl/types";
+import { accounts, cardBenefits, categories, fxRates, settings, tags, transactionTags, transactions } from "@pnl/types";
 
 const TEST_ACCOUNT_ID = "test-account-00000000-0000-0000-0000";
 
@@ -28,6 +20,8 @@ beforeEach(async () => {
   await db.delete(cardBenefits);
   await db.delete(accounts);
   await db.delete(categories);
+  await db.delete(fxRates);
+  await db.delete(settings);
   await db.insert(accounts).values({
     id: TEST_ACCOUNT_ID,
     name: "Test Bank",
@@ -86,7 +80,7 @@ describe("getTagReportByName", () => {
       id: "tx-1",
       date: "2024-03-05",
       description: "Dinner",
-      amount: 50,
+      amountCents: 5000,
       type: "DEBIT",
       categoryId: food!.id,
       accountId: TEST_ACCOUNT_ID
@@ -144,7 +138,7 @@ describe("getTagReportByName", () => {
         id: "tx-1",
         date: "2024-03-03",
         description: "a",
-        amount: 10,
+        amountCents: 1000,
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -153,7 +147,7 @@ describe("getTagReportByName", () => {
         id: "tx-2",
         date: "2024-03-09",
         description: "b",
-        amount: 20,
+        amountCents: 2000,
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -179,7 +173,7 @@ describe("getTagReportByName", () => {
         id: "tx-1",
         date: "2024-03-03",
         description: "Dinner",
-        amount: 50,
+        amountCents: 5000,
         type: "DEBIT",
         categoryId: food!.id,
         accountId: TEST_ACCOUNT_ID
@@ -188,7 +182,7 @@ describe("getTagReportByName", () => {
         id: "tx-2",
         date: "2024-03-05",
         description: "Hotel",
-        amount: 200,
+        amountCents: 20000,
         type: "DEBIT",
         categoryId: rent!.id,
         accountId: TEST_ACCOUNT_ID

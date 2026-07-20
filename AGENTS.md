@@ -72,6 +72,18 @@ Cloudflare Workers monorepo using **pnpm workspaces** + **Turborepo** + **Hono**
   - `@repo/workspace-dependencies` — Pinned dependency versions via syncpack
 - `turbo/` — `turbo gen` templates (`fetch-worker`, `fetch-worker-vite`)
 
+### P&L package layering (ADR-0004)
+
+Domain code is layered with one-way dependencies — `types ← engine ← db ← apps`:
+
+- `@pnl/money` — cents/rate utilities; decimal.js is confined here (ADR-0001)
+- `@pnl/types` — Drizzle schema + Zod input schemas + DTO types ONLY (the contract; no queries, no math)
+- `@pnl/engine` — ALL pure P&L math; consumes base-cents Rollup Cells, emits major-unit DTOs; no drizzle imports
+- `@pnl/db` — ALL data access: the converted-rollup query, FX conversion (hard error on missing rates, ADR-0003), report assembly, ingestion batching
+- `apps/worker`, `apps/mcp-worker` — thin routers over `@pnl/db`
+
+Money is stored as positive integer cents; the API stays in major units (ADR-0001). P&L direction comes from the category's group, never the bank DEBIT/CREDIT type (ADR-0002). See `CONTEXT.md` for the domain glossary and `docs/adr/` for the decisions.
+
 ### Worker structure
 
 Each worker follows this pattern:

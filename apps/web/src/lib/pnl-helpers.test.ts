@@ -17,6 +17,7 @@ import type { MonthlyPnL } from "@pnl/types";
 function makeMonth(month: string, overrides: Partial<MonthlyPnL> = {}): MonthlyPnL {
   return {
     month,
+    currency: "MXN",
     income: { total: 0, items: [] },
     fixed: { total: 0, items: [] },
     variable: { total: 0, items: [] },

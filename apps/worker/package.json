@@ -4,6 +4,11 @@
   "private": true,
   "sideEffects": false,
   "type": "module",
+  "exports": {
+    "./router": {
+      "types": "./src/trpc/router.ts"
+    }
+  },
   "scripts": {
     "build:wrangler": "run-wrangler-build",
     "check:lint": "run-eslint",
@@ -16,11 +21,12 @@
   },
   "dependencies": {
     "@hono/trpc-server": "0.3.4",
+    "@pnl/db": "workspace:*",
+    "@pnl/engine": "workspace:*",
     "@pnl/money": "workspace:*",
     "@pnl/types": "workspace:*",
     "@repo/hono-helpers": "workspace:*",
     "@trpc/server": "11.1.0",
-    "decimal.js": "10.5.0",
     "drizzle-orm": "0.44.2",
     "hono": "4.9.11",
     "workers-tagged-logger": "1.0.0",

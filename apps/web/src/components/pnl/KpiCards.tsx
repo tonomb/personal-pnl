@@ -84,7 +84,7 @@ export function KpiCards({ months, focusedMonth, isReportLoading }: KpiCardsProp
           </CardHeader>
           <CardContent>
             <p className={cn("text-xl font-bold tabular-nums", netColorClass(kpis.netLabel))}>
-              {formatCurrency(kpis.net)}
+              {formatCurrency(kpis.net, kpis.currency)}
             </p>
             <p className="mt-0.5 text-[10px] text-muted-foreground">{monthLabel}</p>
           </CardContent>
@@ -125,7 +125,9 @@ export function KpiCards({ months, focusedMonth, isReportLoading }: KpiCardsProp
           <CardContent>
             {kpis.biggestExpense ? (
               <>
-                <p className="text-xl font-bold tabular-nums">{formatCurrency(kpis.biggestExpense.total)}</p>
+                <p className="text-xl font-bold tabular-nums">
+                  {formatCurrency(kpis.biggestExpense.total, kpis.currency)}
+                </p>
                 <p className="mt-0.5 text-[10px] text-muted-foreground">{kpis.biggestExpense.name}</p>
               </>
             ) : (
@@ -159,8 +161,8 @@ export function KpiCards({ months, focusedMonth, isReportLoading }: KpiCardsProp
                     <TrendingDownIcon className="size-4 shrink-0" />
                   ) : null}
                   {kpis.vsLastMonth.delta >= 0
-                    ? `+${formatCurrency(kpis.vsLastMonth.delta)}`
-                    : formatCurrency(kpis.vsLastMonth.delta)}
+                    ? `+${formatCurrency(kpis.vsLastMonth.delta, kpis.currency)}`
+                    : formatCurrency(kpis.vsLastMonth.delta, kpis.currency)}
                 </p>
                 <p className="mt-0.5 text-[10px] text-muted-foreground">{monthLabel}</p>
               </>

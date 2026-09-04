@@ -13,10 +13,10 @@
     "build:wrangler": "run-wrangler-build",
     "check:lint": "run-eslint",
     "check:types": "run-tsc",
-    "check:workers-types": "run-wrangler-types --check",
+    "check:workers-types": "wrangler types --include-runtime=false --check",
     "deploy": "run-wrangler-deploy",
     "dev": "run-wrangler-dev",
-    "fix:workers-types": "run-wrangler-types",
+    "fix:workers-types": "wrangler types --include-runtime=false",
     "test": "run-vitest"
   },
   "dependencies": {

@@ -89,6 +89,11 @@ describe("parseAmount", () => {
   it("parses zero as CREDIT", () => {
     expect(parseAmount("0.00")).toEqual({ amount: 0, type: "CREDIT" });
   });
+
+  it("flips both signs when the account reports charges as positive", () => {
+    expect(parseAmount("350.72", "DEBIT")).toEqual({ amount: 350.72, type: "DEBIT" });
+    expect(parseAmount("-44317.81", "DEBIT")).toEqual({ amount: 44317.81, type: "CREDIT" });
+  });
 });
 
 describe("parseDebitCredit", () => {

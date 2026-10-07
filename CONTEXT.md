@@ -20,6 +20,9 @@ The stored representation of an Amount: a positive integer number of cents. Stor
 The direction _as reported by the bank statement_. Provenance metadata only — statement formats disagree (credit-card charges often import as CREDIT), so Type is never used to decide which side of the P&L money lands on.
 _Avoid_: using Type for Direction, "sign"
 
+**Sign Convention**:
+What a positive number means in an account's single-Amount-column statements — the Type it gets (negatives get the opposite). Stored on the Account, unset until the first such upload asks; statements with separate Debit / Credit columns never need it.
+
 **Direction**:
 Which side of the P&L a transaction lands on (money in vs money out). Decided by the Group of the transaction's Category, never by Type.
 

@@ -18,10 +18,13 @@ const ACCOUNTS: AccountWithBenefits[] = [
     currency: "MXN",
     last4: "1234",
     color: "#3b82f6",
+    positiveAmountType: null,
     createdAt: "2024-01-01T00:00:00.000Z",
     benefits: []
   }
 ];
+
+const ACCOUNTS_WITH_CONVENTION: AccountWithBenefits[] = [{ ...ACCOUNTS[0]!, positiveAmountType: "DEBIT" }];
 
 async function selectAccount(user: ReturnType<typeof userEvent.setup>, name = /checking/i) {
   await user.click(screen.getByRole("combobox", { name: /account/i }));
@@ -80,10 +83,13 @@ describe("ColumnMapper", () => {
 
     await user.selectOptions(screen.getByRole("combobox", { name: /date/i }), "Date");
     await user.selectOptions(screen.getByRole("combobox", { name: /description/i }), "Desc");
-    await user.selectOptions(screen.getByRole("combobox", { name: /amount/i }), "Amt");
+    await user.selectOptions(screen.getByRole("combobox", { name: /^amount$/i }), "Amt");
     await selectAccount(user);
 
+    // First upload for this account: the sign convention must be answered.
     const confirmBtn = screen.getByRole("button", { name: /confirm/i });
+    expect(confirmBtn).toBeDisabled();
+    await user.selectOptions(screen.getByRole("combobox", { name: /positive amounts are/i }), "DEBIT");
     expect(confirmBtn).not.toBeDisabled();
 
     await user.click(confirmBtn);
@@ -96,8 +102,58 @@ describe("ColumnMapper", () => {
         creditCol: undefined,
         useDebitCredit: false
       },
-      "acc-1"
+      "acc-1",
+      "DEBIT"
     );
+  });
+
+  it("does not ask for the sign convention once the account has one", async () => {
+    const onConfirm = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ColumnMapper
+        fileName="bank.csv"
+        headers={HEADERS}
+        previewRows={PREVIEW_ROWS}
+        accounts={ACCOUNTS_WITH_CONVENTION}
+        initialAccountId="acc-1"
+        initialMapping={{
+          dateCol: "Date",
+          descriptionCol: "Desc",
+          amountCol: "Amt",
+          debitCol: undefined,
+          creditCol: undefined,
+          useDebitCredit: false
+        }}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("combobox", { name: /positive amounts are/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /confirm/i }));
+    expect(onConfirm).toHaveBeenCalledWith(expect.anything(), "acc-1", "DEBIT");
+  });
+
+  it("does not ask for the sign convention in Debit / Credit column mode", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ColumnMapper
+        fileName="bank.csv"
+        headers={HEADERS}
+        previewRows={PREVIEW_ROWS}
+        accounts={ACCOUNTS}
+        initialAccountId="acc-1"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: /positive amounts are/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /use separate debit \/ credit columns/i }));
+    expect(screen.queryByRole("combobox", { name: /positive amounts are/i })).not.toBeInTheDocument();
   });
 
   it("pre-fills mapping fields and account from initialMapping/initialAccountId", async () => {
@@ -109,7 +165,7 @@ describe("ColumnMapper", () => {
         fileName="bank.csv"
         headers={HEADERS}
         previewRows={PREVIEW_ROWS}
-        accounts={ACCOUNTS}
+        accounts={ACCOUNTS_WITH_CONVENTION}
         initialAccountId="acc-1"
         initialMapping={{
           dateCol: "Date",
@@ -136,7 +192,8 @@ describe("ColumnMapper", () => {
         creditCol: undefined,
         useDebitCredit: false
       },
-      "acc-1"
+      "acc-1",
+      "DEBIT"
     );
   });
 

@@ -57,13 +57,20 @@ export function generateTransactionId(date: string, description: string, amount:
   return hashString(occurrence > 1 ? `${key}|${occurrence}` : key);
 }
 
-export function parseAmount(raw: string): { amount: number; type: "DEBIT" | "CREDIT" } {
+// Banks disagree on what a positive amount means (a checking export uses it for
+// deposits, a credit-card export for charges), so the account's convention is
+// passed in: positives get `positiveAmountType`, negatives the opposite.
+export function parseAmount(
+  raw: string,
+  positiveAmountType: "DEBIT" | "CREDIT" = "CREDIT"
+): { amount: number; type: "DEBIT" | "CREDIT" } {
   const cleaned = raw.replace(/[$,\s]/g, "");
   const isNegative = cleaned.startsWith("(") || cleaned.startsWith("-");
   const numeric = parseFloat(cleaned.replace(/[()]/g, ""));
+  const negativeAmountType = positiveAmountType === "CREDIT" ? "DEBIT" : "CREDIT";
   return {
     amount: Math.abs(numeric),
-    type: isNegative ? "DEBIT" : "CREDIT"
+    type: isNegative ? negativeAmountType : positiveAmountType
   };
 }
 

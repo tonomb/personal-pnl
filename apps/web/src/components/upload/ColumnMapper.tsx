@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AccountSelector } from "@/components/accounts/AccountSelector";
 import { normalizeDate } from "@/lib/csv";
 
-import type { AccountWithBenefits } from "@pnl/types";
+import type { AccountWithBenefits, TransactionType } from "@pnl/types";
 
 export interface MappingState {
   dateCol: string | undefined;
@@ -23,9 +23,19 @@ interface ColumnMapperProps {
   accounts: AccountWithBenefits[];
   initialAccountId?: string | null;
   initialMapping?: MappingState;
-  onConfirm: (mapping: MappingState, accountId: string) => void;
+  /**
+   * `positiveAmountType` is the Type a positive amount gets — the account's
+   * stored convention, or the user's answer when the account has none yet.
+   * Undefined in Debit / Credit column mode, where the columns decide.
+   */
+  onConfirm: (mapping: MappingState, accountId: string, positiveAmountType?: TransactionType) => void;
   onCancel: () => void;
 }
+
+const POSITIVE_AMOUNT_LABELS: Record<TransactionType, string> = {
+  DEBIT: "Money out (charges, withdrawals)",
+  CREDIT: "Money in (deposits, payments)"
+};
 
 function FieldSelect({
   label,
@@ -83,13 +93,28 @@ export function ColumnMapper({
     }
   );
   const [accountId, setAccountId] = useState<string | null>(initialAccountId ?? null);
+  const [chosenPositiveAmountType, setChosenPositiveAmountType] = useState<TransactionType | undefined>();
 
   function set(field: keyof MappingState, value: string | boolean | undefined) {
     setMapping((prev) => ({ ...prev, [field]: value }));
   }
 
+  // A single Amount column needs to know what a positive number means. The
+  // account remembers that after its first upload; until then we ask here.
+  const account = accounts.find((a) => a.id === accountId);
+  const needsSignConvention = !mapping.useDebitCredit && Boolean(account);
+  const positiveAmountType = needsSignConvention
+    ? (account?.positiveAmountType ?? chosenPositiveAmountType)
+    : undefined;
+
   const amountValid = mapping.useDebitCredit ? mapping.debitCol && mapping.creditCol : mapping.amountCol;
-  const isValid = Boolean(mapping.dateCol && mapping.descriptionCol && amountValid && accountId);
+  const isValid = Boolean(
+    mapping.dateCol &&
+    mapping.descriptionCol &&
+    amountValid &&
+    accountId &&
+    (!needsSignConvention || positiveAmountType)
+  );
 
   // Columns to show in preview: only mapped ones
   const previewCols: Array<{ field: string; col: string }> = [
@@ -174,6 +199,37 @@ export function ColumnMapper({
         {mapping.useDebitCredit ? "Use single Amount column" : "Use separate Debit / Credit columns"}
       </button>
 
+      {/* Sign convention — asked once per account */}
+      {needsSignConvention &&
+        (account?.positiveAmountType ? (
+          <p className="text-muted-foreground text-xs">
+            Positive amounts on {account.name} are read as{" "}
+            {POSITIVE_AMOUNT_LABELS[account.positiveAmountType].toLowerCase()}.
+          </p>
+        ) : (
+          <div className="flex max-w-xs flex-col gap-1">
+            <label htmlFor="positive-amounts" className="text-xs font-medium text-muted-foreground">
+              Positive amounts are
+            </label>
+            <select
+              id="positive-amounts"
+              aria-label="Positive amounts are"
+              value={chosenPositiveAmountType ?? ""}
+              onChange={(e) =>
+                setChosenPositiveAmountType((e.target.value || undefined) as TransactionType | undefined)
+              }
+              className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
+            >
+              <option value="">— select —</option>
+              <option value="DEBIT">{POSITIVE_AMOUNT_LABELS.DEBIT}</option>
+              <option value="CREDIT">{POSITIVE_AMOUNT_LABELS.CREDIT}</option>
+            </select>
+            <p className="text-muted-foreground text-xs">
+              Asked once — saved on {account?.name} for every later statement from this account.
+            </p>
+          </div>
+        ))}
+
       {/* Preview table */}
       {previewCols.length > 0 && (
         <Table>
@@ -212,7 +268,7 @@ export function ColumnMapper({
 
       {/* Actions */}
       <div className="flex gap-2">
-        <Button disabled={!isValid} onClick={() => onConfirm(mapping, accountId!)}>
+        <Button disabled={!isValid} onClick={() => onConfirm(mapping, accountId!, positiveAmountType)}>
           Confirm mapping
         </Button>
         <Button variant="outline" onClick={onCancel}>

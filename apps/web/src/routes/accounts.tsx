@@ -47,6 +47,13 @@ type AccountFormState = {
 
 const CURRENCY_OPTIONS = ["MXN", "USD", "EUR", "CAD", "GBP"];
 
+const SIGN_UNSET = "UNSET";
+const SIGN_LABELS: Record<string, string> = {
+  [SIGN_UNSET]: "Ask on next upload",
+  DEBIT: "Money out (charges, withdrawals)",
+  CREDIT: "Money in (deposits, payments)"
+};
+
 const DEFAULT_FORM: AccountFormState = {
   name: "",
   institution: "",
@@ -74,6 +81,7 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
           currency: input.currency ?? "MXN",
           last4: input.last4 ?? null,
           color: input.color ?? TAG_PRESET_COLORS[5],
+          positiveAmountType: null,
           createdAt: new Date().toISOString(),
           benefits: [] as CardBenefit[]
         } satisfies AccountWithBenefits
@@ -200,6 +208,7 @@ function EditAccountForm({ account, onDone }: { account: AccountWithBenefits; on
     last4: account.last4 ?? "",
     color: account.color
   });
+  const [positiveAmountType, setPositiveAmountType] = useState(account.positiveAmountType);
   const utils = trpc.useUtils();
 
   const updateMutation = trpc.accounts.update.useMutation({
@@ -216,7 +225,8 @@ function EditAccountForm({ account, onDone }: { account: AccountWithBenefits; on
                 ...(input.type !== undefined && { type: input.type as Account["type"] }),
                 ...(input.currency !== undefined && { currency: input.currency }),
                 ...(input.last4 !== undefined && { last4: input.last4 }),
-                ...(input.color !== undefined && { color: input.color })
+                ...(input.color !== undefined && { color: input.color }),
+                ...(input.positiveAmountType !== undefined && { positiveAmountType: input.positiveAmountType })
               }
             : a
         )
@@ -248,7 +258,8 @@ function EditAccountForm({ account, onDone }: { account: AccountWithBenefits; on
       type: form.type,
       currency: form.currency,
       last4: form.last4.trim() || null,
-      color: form.color
+      color: form.color,
+      positiveAmountType
     });
   }
 
@@ -312,6 +323,28 @@ function EditAccountForm({ account, onDone }: { account: AccountWithBenefits; on
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">Positive amounts in statements are</label>
+        <Select
+          value={positiveAmountType ?? SIGN_UNSET}
+          onValueChange={(v) => setPositiveAmountType(v === "DEBIT" || v === "CREDIT" ? v : null)}
+        >
+          <SelectTrigger className="w-full" aria-label="Positive amounts in statements are">
+            <SelectValue>{(v: string) => SIGN_LABELS[v] ?? v}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(SIGN_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-muted-foreground text-xs">
+          Used when a statement has a single Amount column. Changing it affects future uploads only.
+        </p>
       </div>
 
       <div className="space-y-1">

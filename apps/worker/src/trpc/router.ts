@@ -1,5 +1,5 @@
 import { initTRPC, TRPCError } from "@trpc/server";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, isNull } from "drizzle-orm";
 import { WorkersLogger } from "workers-tagged-logger";
 import { z } from "zod";
 
@@ -50,6 +50,7 @@ import {
   transactionListInputSchema,
   transactions,
   transactionTags,
+  transactionTypeSchema,
   updateAccountInputSchema,
   updateCardBenefitInputSchema,
   updateCategoryInputSchema,
@@ -390,7 +391,10 @@ export const appRouter = router({
           transactions: z.array(transactionInputSchema),
           sourceFile: z.string(),
           mapping: insertColumnMappingSchema,
-          accountId: z.string()
+          accountId: z.string(),
+          // Sent when a single-Amount-column upload had to ask how this bank
+          // signs amounts; remembered on the account so later uploads don't ask.
+          positiveAmountType: transactionTypeSchema.optional()
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -417,6 +421,13 @@ export const appRouter = router({
               }
             });
           event.mappingUpserted = true;
+
+          if (input.positiveAmountType) {
+            await ctx.db
+              .update(accounts)
+              .set({ positiveAmountType: input.positiveAmountType })
+              .where(and(eq(accounts.id, input.accountId), isNull(accounts.positiveAmountType)));
+          }
 
           const { inserted, duplicates } = await insertTransactions(ctx.db, input.transactions, input.accountId);
           event.duplicates = duplicates;

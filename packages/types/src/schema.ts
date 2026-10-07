@@ -14,6 +14,10 @@ export const accounts = sqliteTable("accounts", {
   currency: text("currency").notNull().default("MXN"), // ISO 4217; every transaction inherits it (ADR-0003)
   last4: text("last4"),
   color: text("color").notNull().default("#3b82f6"),
+  // How this bank's single-Amount-column statements report direction: the Type
+  // a positive amount gets (negatives get the opposite). Null until the first
+  // such upload for the account asks the user.
+  positiveAmountType: text("positive_amount_type", { enum: ["DEBIT", "CREDIT"] }),
   createdAt: text("created_at")
     .$defaultFn(() => new Date().toISOString())
     .notNull()
@@ -125,6 +129,9 @@ export const columnMappings = sqliteTable("column_mappings", {
 
 export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/, "Currency must be a 3-letter ISO code");
 
+export const transactionTypeSchema = z.enum(["DEBIT", "CREDIT"]);
+export type TransactionType = z.infer<typeof transactionTypeSchema>;
+
 export const insertAccountSchema = createInsertSchema(accounts);
 export const selectAccountSchema = createSelectSchema(accounts);
 
@@ -158,7 +165,8 @@ export const updateAccountInputSchema = z.object({
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/)
-    .optional()
+    .optional(),
+  positiveAmountType: transactionTypeSchema.nullable().optional()
 });
 
 export const deleteAccountInputSchema = z.object({ id: z.string().min(1) });

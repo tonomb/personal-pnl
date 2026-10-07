@@ -43,6 +43,13 @@
       "when": 1783887409895,
       "tag": "0006_amount_cents_multicurrency",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791336194292,
+      "tag": "0007_account_positive_amount_type",
+      "breakpoints": true
     }
   ]
 }

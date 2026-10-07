@@ -1,0 +1,1 @@
+ALTER TABLE `accounts` ADD `positive_amount_type` text;

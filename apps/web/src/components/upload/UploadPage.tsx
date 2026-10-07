@@ -13,7 +13,7 @@ import { generateFingerprint, generateTransactionId, normalizeDate, parseAmount,
 import { getSheetNames, xlsxToCsvString } from "@/lib/xlsx";
 import { trpc } from "@/lib/trpc";
 
-import type { NewColumnMapping, TransactionUpload } from "@pnl/types";
+import type { NewColumnMapping, TransactionType, TransactionUpload } from "@pnl/types";
 
 // ---------------------------------------------------------------------------
 // File status discriminated union
@@ -28,7 +28,13 @@ type FileStatus =
       fingerprint: string;
       suggestedMapping?: MappingState;
     }
-  | { phase: "ready"; transactions: TransactionUpload[]; mapping: NewColumnMapping; accountId: string }
+  | {
+      phase: "ready";
+      transactions: TransactionUpload[];
+      mapping: NewColumnMapping;
+      accountId: string;
+      positiveAmountType?: TransactionType;
+    }
   | { phase: "uploading" }
   | { phase: "done"; inserted: number; duplicates: number }
   | { phase: "error"; message: string };
@@ -59,7 +65,8 @@ function buildTransactions(
   rawRows: Array<Record<string, string>>,
   mapping: MappingState,
   sourceFile: string,
-  accountId: string
+  accountId: string,
+  positiveAmountType?: TransactionType
 ): { transactions: TransactionUpload[]; badDateRows: string[] } {
   const occurrences = new Map<string, number>();
   const result: TransactionUpload[] = [];
@@ -85,7 +92,7 @@ function buildTransactions(
       amount = parsed.amount;
       type = parsed.type;
     } else {
-      const parsed = parseAmount(row[mapping.amountCol!] ?? "0");
+      const parsed = parseAmount(row[mapping.amountCol!] ?? "0", positiveAmountType);
       amount = parsed.amount;
       type = parsed.type;
     }
@@ -136,7 +143,13 @@ export function UploadPage() {
   const utils = trpc.useUtils();
   const navigate = useNavigate();
   const { data: accountsData } = trpc.accounts.list.useQuery();
-  const allAccounts = accountsData ?? [];
+  // Sign conventions answered in this session but not uploaded yet, so a second
+  // file for the same account isn't asked the same question.
+  const [pendingSignConventions, setPendingSignConventions] = useState<Map<string, TransactionType>>(new Map());
+  const allAccounts = (accountsData ?? []).map((a) => ({
+    ...a,
+    positiveAmountType: a.positiveAmountType ?? pendingSignConventions.get(a.id) ?? null
+  }));
 
   function updateFile(name: string, status: FileStatus | undefined) {
     setFileMap((prev) => {
@@ -269,13 +282,27 @@ export function UploadPage() {
     }
   }
 
-  function handleMappingConfirm(fileName: string, mapping: MappingState, accountId: string) {
+  function handleMappingConfirm(
+    fileName: string,
+    mapping: MappingState,
+    accountId: string,
+    positiveAmountType?: TransactionType
+  ) {
     const status = fileMap.get(fileName);
     if (status?.phase !== "mapping") return;
 
-    const { transactions: txs, badDateRows } = buildTransactions(status.rawRows, mapping, fileName, accountId);
+    const { transactions: txs, badDateRows } = buildTransactions(
+      status.rawRows,
+      mapping,
+      fileName,
+      accountId,
+      positiveAmountType
+    );
     const dbMapping = toDbMapping(mapping, status.fingerprint);
-    updateFile(fileName, { phase: "ready", transactions: txs, mapping: dbMapping, accountId });
+    updateFile(fileName, { phase: "ready", transactions: txs, mapping: dbMapping, accountId, positiveAmountType });
+    if (positiveAmountType) {
+      setPendingSignConventions((prev) => new Map(prev).set(accountId, positiveAmountType));
+    }
     setLastUsedAccountId(accountId);
     if (badDateRows.length > 0) {
       toast.warning(
@@ -296,7 +323,8 @@ export function UploadPage() {
           transactions: status.transactions,
           sourceFile: fileName,
           mapping: status.mapping,
-          accountId: status.accountId
+          accountId: status.accountId,
+          positiveAmountType: status.positiveAmountType
         });
         updateFile(fileName, {
           phase: "done",
@@ -320,6 +348,8 @@ export function UploadPage() {
     // The transaction list has a 30s staleTime; without this the page we are
     // about to open could render a cached list that predates the upload.
     await utils.transactions.invalidate();
+    // The upload may have just stored an account's sign convention.
+    await utils.accounts.list.invalidate();
     await navigate({ to: "/categorize" });
   }
 
@@ -380,7 +410,9 @@ export function UploadPage() {
                     accounts={allAccounts}
                     initialAccountId={lastUsedAccountId}
                     initialMapping={status.suggestedMapping}
-                    onConfirm={(mapping, accountId) => handleMappingConfirm(name, mapping, accountId)}
+                    onConfirm={(mapping, accountId, positiveAmountType) =>
+                      handleMappingConfirm(name, mapping, accountId, positiveAmountType)
+                    }
                     onCancel={() => updateFile(name, undefined)}
                   />
                 </>

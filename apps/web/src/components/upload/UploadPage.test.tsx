@@ -33,6 +33,9 @@ vi.mock("@/lib/trpc", () => ({
       transactions: {
         getMapping: { fetch: mockGetMappingFetch },
         invalidate: mockInvalidate
+      },
+      accounts: {
+        list: { invalidate: vi.fn() }
       }
     })
   }
@@ -51,6 +54,7 @@ const ACCOUNTS: AccountWithBenefits[] = [
     currency: "MXN",
     last4: "1234",
     color: "#3b82f6",
+    positiveAmountType: null,
     createdAt: "2024-01-01T00:00:00.000Z",
     benefits: []
   }
@@ -63,7 +67,11 @@ function makeCsvFile(name = "bank.csv", content = CSV) {
 }
 
 /** Drops a CSV, maps its columns, and picks an account — leaving the file "Ready". */
-async function dropAndMap(user: ReturnType<typeof userEvent.setup>, file: File) {
+async function dropAndMap(
+  user: ReturnType<typeof userEvent.setup>,
+  file: File,
+  positiveAmounts: "DEBIT" | "CREDIT" = "CREDIT"
+) {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
   await user.upload(input, [file]);
 
@@ -73,6 +81,7 @@ async function dropAndMap(user: ReturnType<typeof userEvent.setup>, file: File) 
   await user.selectOptions(screen.getByRole("combobox", { name: /^amount$/i }), "Amt");
   await user.click(screen.getByRole("combobox", { name: /account/i }));
   await user.click(await screen.findByRole("option", { name: /checking/i }));
+  await user.selectOptions(screen.getByRole("combobox", { name: /positive amounts are/i }), positiveAmounts);
   await user.click(screen.getByRole("button", { name: /confirm mapping/i }));
 }
 
@@ -138,5 +147,19 @@ describe("UploadPage", () => {
     const { transactions } = mockMutateAsync.mock.calls[0]![0];
     expect(transactions).toHaveLength(2);
     expect(transactions[0].id).not.toBe(transactions[1].id);
+  });
+
+  it("types amounts by the sign convention answered for the account and sends it to be saved", async () => {
+    const user = userEvent.setup();
+    render(<UploadPage />);
+
+    const csv = "Date,Desc,Amt\n2026-01-30,UBER EATS,350.72\n2026-01-29,GRACIAS POR SU PAGO,-44317.81\n";
+    await dropAndMap(user, makeCsvFile("amex.csv", csv), "DEBIT");
+    await user.click(await screen.findByRole("button", { name: /upload all/i }));
+
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalled());
+    const input = mockMutateAsync.mock.calls[0]![0];
+    expect(input.positiveAmountType).toBe("DEBIT");
+    expect(input.transactions.map((t: { type: string }) => t.type)).toEqual(["DEBIT", "CREDIT"]);
   });
 });

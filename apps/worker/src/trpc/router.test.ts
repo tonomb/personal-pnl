@@ -2209,6 +2209,40 @@ describe("transactions.upload with accountId", () => {
     const [stored] = await makeDb().select().from(transactions).where(eq(transactions.id, tx.id));
     expect(stored!.accountId).toBe(account.id);
   });
+
+  it("remembers the sign convention on the account from its first upload", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+    expect(account.positiveAmountType).toBeNull();
+
+    await caller.transactions.upload({
+      transactions: [tx],
+      sourceFile: "bank.csv",
+      mapping: aMapping,
+      accountId: account.id,
+      positiveAmountType: "DEBIT"
+    });
+
+    const stored = (await caller.accounts.list()).find((a) => a.id === account.id);
+    expect(stored!.positiveAmountType).toBe("DEBIT");
+  });
+
+  it("does not overwrite a sign convention the account already has", async () => {
+    const caller = makeCaller();
+    const account = await caller.accounts.create(aAccount);
+    await caller.accounts.update({ id: account.id, positiveAmountType: "DEBIT" });
+
+    await caller.transactions.upload({
+      transactions: [tx],
+      sourceFile: "bank.csv",
+      mapping: aMapping,
+      accountId: account.id,
+      positiveAmountType: "CREDIT"
+    });
+
+    const stored = (await caller.accounts.list()).find((a) => a.id === account.id);
+    expect(stored!.positiveAmountType).toBe("DEBIT");
+  });
 });
 
 // ---------------------------------------------------------------------------

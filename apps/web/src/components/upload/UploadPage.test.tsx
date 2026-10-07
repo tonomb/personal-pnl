@@ -58,8 +58,8 @@ const ACCOUNTS: AccountWithBenefits[] = [
 
 const CSV = "Date,Desc,Amt\n2024-01-01,Coffee,-4.50\n";
 
-function makeCsvFile(name = "bank.csv") {
-  return new File([CSV], name, { type: "text/csv" });
+function makeCsvFile(name = "bank.csv", content = CSV) {
+  return new File([content], name, { type: "text/csv" });
 }
 
 /** Drops a CSV, maps its columns, and picks an account — leaving the file "Ready". */
@@ -124,5 +124,19 @@ describe("UploadPage", () => {
 
     expect(screen.getByRole("button", { name: /upload all/i })).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("uploads identical rows in one file as separate transactions", async () => {
+    const user = userEvent.setup();
+    render(<UploadPage />);
+
+    const csv = "Date,Desc,Amt\n2026-01-30,PASE SANTA FE,11.00\n2026-01-30,PASE SANTA FE,11.00\n";
+    await dropAndMap(user, makeCsvFile("tolls.csv", csv));
+    await user.click(await screen.findByRole("button", { name: /upload all/i }));
+
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalled());
+    const { transactions } = mockMutateAsync.mock.calls[0]![0];
+    expect(transactions).toHaveLength(2);
+    expect(transactions[0].id).not.toBe(transactions[1].id);
   });
 });

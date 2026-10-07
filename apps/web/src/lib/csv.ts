@@ -49,8 +49,12 @@ export function generateFingerprint(headers: string[]): string {
   return hashString([...headers].sort().join(","));
 }
 
-export function generateTransactionId(date: string, description: string, amount: number): string {
-  return hashString(`${date}|${description}|${amount}`);
+// `occurrence` is the 1-based position among rows of one file sharing the same
+// date, description and amount (e.g. two identical toll charges on one day).
+// The first occurrence hashes exactly as before so already-stored IDs stay valid.
+export function generateTransactionId(date: string, description: string, amount: number, occurrence = 1): string {
+  const key = `${date}|${description}|${amount}`;
+  return hashString(occurrence > 1 ? `${key}|${occurrence}` : key);
 }
 
 export function parseAmount(raw: string): { amount: number; type: "DEBIT" | "CREDIT" } {

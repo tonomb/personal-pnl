@@ -61,7 +61,7 @@ function buildTransactions(
   sourceFile: string,
   accountId: string
 ): { transactions: TransactionUpload[]; badDateRows: string[] } {
-  const seen = new Set<string>();
+  const occurrences = new Map<string, number>();
   const result: TransactionUpload[] = [];
   const badDateRows: string[] = [];
 
@@ -90,9 +90,12 @@ function buildTransactions(
       type = parsed.type;
     }
 
-    const id = generateTransactionId(date, description, amount);
-    if (seen.has(id)) continue;
-    seen.add(id);
+    // Identical rows within one file are separate transactions, not duplicates —
+    // number them so each gets its own ID instead of being dropped.
+    const baseId = generateTransactionId(date, description, amount);
+    const occurrence = (occurrences.get(baseId) ?? 0) + 1;
+    occurrences.set(baseId, occurrence);
+    const id = generateTransactionId(date, description, amount, occurrence);
 
     result.push({
       id,

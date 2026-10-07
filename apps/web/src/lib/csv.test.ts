@@ -24,6 +24,17 @@ describe("generateTransactionId", () => {
       generateTransactionId("2024-01-02", "Coffee", 4.5)
     );
   });
+
+  it("keeps the first occurrence's ID unchanged so stored IDs stay valid", () => {
+    expect(generateTransactionId("2024-01-01", "Coffee", 4.5, 1)).toBe(
+      generateTransactionId("2024-01-01", "Coffee", 4.5)
+    );
+  });
+
+  it("gives repeated identical rows distinct IDs per occurrence", () => {
+    const ids = [1, 2, 3].map((n) => generateTransactionId("2026-01-30", "PASE SANTA FE VIAPASS", 11, n));
+    expect(new Set(ids).size).toBe(3);
+  });
 });
 
 describe("normalizeDate", () => {

@@ -64,7 +64,7 @@ type FlatRow = MerchantRow | TxRow;
 // ---------------------------------------------------------------------------
 
 const GRID =
-  "grid-cols-[20px_minmax(0,1fr)_96px_minmax(160px,260px)] sm:grid-cols-[20px_minmax(0,1fr)_80px_100px_minmax(220px,1fr)]";
+  "gap-x-4 grid-cols-[20px_minmax(0,1fr)_96px_minmax(160px,260px)] sm:grid-cols-[20px_minmax(0,1fr)_80px_100px_minmax(220px,1fr)]";
 
 function formatDate(date: string): string {
   const [y, m, d] = date.split("-").map(Number);

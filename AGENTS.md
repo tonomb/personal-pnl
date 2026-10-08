@@ -109,8 +109,11 @@ Dev runs with `--remote` flag — the local Worker connects directly to the real
 ```bash
 just install   # install deps
 just dev       # start web + worker concurrently (uses remote D1 binding)
-pnpm db:push   # apply Drizzle schema changes to D1
+pnpm db:generate   # generate a migration in packages/types/drizzle after editing the schema
+pnpm db:push:local # apply migrations to a local D1 (what branch CI runs)
 ```
+
+Migrations are applied to the remote D1 by CI on merge to `main` (`wrangler d1 migrations apply`, before the deploy). Commit the generated SQL and let CI apply it. Do NOT run `pnpm db:push` (`drizzle-kit push`) against the remote database — it changes the schema without recording the migration, so the next CI migration run fails.
 
 ## UI Components (shadcn)
 
@@ -152,4 +155,4 @@ Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/ag
 - TypeScript configs must use fully qualified paths: `@repo/typescript-config/base.json`
 - Do NOT add `WebWorker` to tsconfig — types come from `worker-configuration.d.ts` or `@cloudflare/workers-types`
 - Use `bun turbo -F` for build/test/deploy; use `pnpm -F` for dependency management
-- CI runs on branches; deploy happens automatically on merge to `main` via GitHub Actions (`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets required)
+- CI runs on branches (including a local dry run of the D1 migrations); on merge to `main` GitHub Actions applies pending D1 migrations and then deploys (gated on the `DEPLOY_ENABLED=true` repo variable; `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are secrets on the `production` GitHub environment; the token needs D1 Edit as well as Workers permissions)

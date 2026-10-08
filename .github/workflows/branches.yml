@@ -26,3 +26,6 @@ jobs:
         run: pnpm install --frozen-lockfile --child-concurrency=10
       - name: Check & Test
         run: bun runx ci check
+      # Applies every migration to a fresh local D1 (no Cloudflare credentials needed).
+      - name: Validate D1 Migrations
+        run: pnpm db:push:local

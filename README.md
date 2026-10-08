@@ -62,8 +62,11 @@ just dev
 
 ```bash
 pnpm -F pnl-api wrangler d1 create personal-pnl  # create D1 database (first time)
-pnpm db:push                                       # apply Drizzle schema to D1
+pnpm db:generate                                   # generate a migration after editing the schema
+pnpm db:push:local                                 # apply migrations to a local D1
 ```
+
+Migrations in `packages/types/drizzle/` are applied to the remote D1 by CI on merge to `main`, before the deploy. Don't run `pnpm db:push` (`drizzle-kit push`) against the remote database — it bypasses the migration history and breaks the next CI run.
 
 **Build:**
 
@@ -77,6 +80,18 @@ just build
 ```bash
 just deploy
 ```
+
+## Deploying Your Own Fork
+
+Merging to `main` runs the Release workflow, which applies pending D1 migrations and then deploys the workers. Both steps are skipped until you opt in, so a fresh fork stays green. To deploy to your own Cloudflare account:
+
+1. Create a D1 database: `pnpm -F pnl-api wrangler d1 create personal-pnl`
+2. Replace the `database_id` in `apps/worker/wrangler.jsonc` and `apps/mcp-worker/wrangler.jsonc`, and the fallback ID in `packages/types/drizzle.config.ts`, with the ID it prints.
+3. Create a Cloudflare API token with **Workers Scripts: Edit** and **D1: Edit** on your account.
+4. In your GitHub repo, create an environment named `production` (Settings → Environments), restrict its deployment branches to `main`, and add two environment secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+5. Add a repository variable `DEPLOY_ENABLED` with the value `true` (Settings → Secrets and variables → Actions → Variables).
+
+No credentials are stored in this repository — forks never inherit secrets.
 
 ## UI Components — shadcn/ui
 

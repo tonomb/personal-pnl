@@ -227,7 +227,7 @@ pnpm db:generate      # write the migration SQL — commit it
 pnpm db:push:local    # apply to a local D1 (branch CI runs this as a check)
 ```
 
-The remote D1 is migrated by CI: on merge to `main` the Release workflow runs `wrangler d1 migrations apply --remote` before deploying. Don't run `pnpm db:push` (`drizzle-kit push`) against the remote database — it changes the schema without recording the migration in `d1_migrations`, so the next CI run fails.
+The remote D1 is migrated by CI: on merge to `main` the CI workflow runs `wrangler d1 migrations apply --remote`. Don't run `pnpm db:push` (`drizzle-kit push`) against the remote database — it changes the schema without recording the migration in `d1_migrations`, so the next CI run fails.
 
 ### shadcn/ui + Tailwind CSS v4
 

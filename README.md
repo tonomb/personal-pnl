@@ -30,7 +30,7 @@ Managing multiple related services (like Cloudflare Workers) in separate reposit
 - **Code sharing and reuse** - Easily create and share common logic, types, and utilities between workers by placing them in the `packages/` directory. Changes to shared code are immediately available to all consumers.
 - **Atomic commits** - Changes affecting multiple workers or shared libraries can be committed together, making the history easier to understand and reducing the risk of inconsistencies.
 - **Consistent tooling** - Apply the same build, test, linting, and formatting configurations (e.g., via Turborepo in `turbo.json` and shared configs in `packages/`) across all projects, ensuring consistent tooling and code quality across Workers.
-- **Streamlined CI/CD** - A single pipeline (like the ones in `.github/workflows/`) can build, test, and deploy all Workers, simplifying the release process.
+- **Streamlined CI** - A single pipeline (like the one in `.github/workflows/`) can build and test all Workers.
 - **Easier refactoring** - Refactoring code that spans multiple workers or shared packages is significantly easier within a single repository.
 
 ## Prerequisites
@@ -66,7 +66,7 @@ pnpm db:generate                                   # generate a migration after 
 pnpm db:push:local                                 # apply migrations to a local D1
 ```
 
-Migrations in `packages/types/drizzle/` are applied to the remote D1 by CI on merge to `main`, before the deploy. Don't run `pnpm db:push` (`drizzle-kit push`) against the remote database — it bypasses the migration history and breaks the next CI run.
+Migrations in `packages/types/drizzle/` are applied to the remote D1 by CI on merge to `main`. Don't run `pnpm db:push` (`drizzle-kit push`) against the remote database — it bypasses the migration history and breaks the next CI run.
 
 **Build:**
 
@@ -75,19 +75,13 @@ just build
 # or: pnpm build
 ```
 
-**Deploy:**
+## Using Your Own Database
 
-```bash
-just deploy
-```
-
-## Deploying Your Own Fork
-
-Merging to `main` runs the Release workflow, which applies pending D1 migrations and then deploys the workers. Both steps are skipped until you opt in, so a fresh fork stays green. To deploy to your own Cloudflare account:
+The app runs locally but stores its data in a remote Cloudflare D1 database. Merging to `main` runs the CI workflow, which applies pending D1 migrations to it. That step is skipped until you opt in, so a fresh fork stays green. To point a fork at your own Cloudflare account:
 
 1. Create a D1 database: `pnpm -F pnl-api wrangler d1 create personal-pnl`
 2. Replace the `database_id` in `apps/worker/wrangler.jsonc` and `apps/mcp-worker/wrangler.jsonc`, and the fallback ID in `packages/types/drizzle.config.ts`, with the ID it prints.
-3. Create a Cloudflare API token with **Workers Scripts: Edit** and **D1: Edit** on your account.
+3. Create a Cloudflare API token with **D1: Edit** on your account.
 4. In your GitHub repo, create an environment named `production` (Settings → Environments), restrict its deployment branches to `main`, and add two environment secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 5. Add a repository variable `DEPLOY_ENABLED` with the value `true` (Settings → Secrets and variables → Actions → Variables).
 
@@ -261,17 +255,9 @@ git add . && git commit -m "your message"
 
 ## GitHub Actions
 
-This repository includes GitHub Actions workflows defined in the `.github/workflows` directory:
+CI is a single workflow, `.github/workflows/ci.yml`, triggered on every push. Nothing is deployed — the app runs locally.
 
-- **`branches.yml` (Branches Workflow):**
-  - Triggered on pushes to any branch _except_ `main`.
-  - Installs dependencies with pnpm.
-  - Runs checks/tests (`bun runx ci check`)
-
-- **`release.yml` (Release Workflow):**
-  - Triggered on pushes to the `main` branch.
-  - Contains two jobs:
-    - `test-and-deploy`: Installs dependencies, runs checks/tests (`bun turbo check:ci`), and then deploys all workers (`bun turbo deploy`). This step requires the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets to be configured in your repository's GitHub secrets.
-    - `create-release-pr`: Uses [Changesets](https://github.com/changesets/changesets) to create a pull request that compiles changelogs and bumps package versions. This PR is primarily for documentation and versioning, as deployment happens directly on merge to `main`.
+- **`check`** (all branches): installs dependencies with pnpm, runs checks/tests (`bun runx ci check`), and applies every D1 migration to a fresh local database as a dry run.
+- **`migrate`** (`main` only, after `check` passes): applies pending D1 migrations to the remote database (`pnpm db:push:remote`). Requires the `DEPLOY_ENABLED=true` repository variable and the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets on the `production` environment.
 
 # personal-pnl

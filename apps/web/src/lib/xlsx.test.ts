@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
 
-import { getSheetNames, xlsxToCsvString } from "./xlsx";
+import { getSheetNames, getSheetPreviewRows, xlsxToCsvString } from "./xlsx";
 
 // ---------------------------------------------------------------------------
 // Helpers to build in-memory workbook ArrayBuffers without fixture files
@@ -117,5 +117,46 @@ describe("xlsxToCsvString", () => {
     const buf = makeWorkbookBuffer([{ name: "Sheet1", data: SHEET_WITH_METADATA }]);
     const csv = xlsxToCsvString(buf, "Sheet1");
     expect(csv).toContain("Report Title");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getSheetPreviewRows
+// ---------------------------------------------------------------------------
+
+describe("getSheetPreviewRows", () => {
+  it("returns the top rows untouched, metadata and blank rows included", () => {
+    const buf = makeWorkbookBuffer([{ name: "Sheet1", data: SHEET_WITH_METADATA }]);
+    const rows = getSheetPreviewRows(buf, "Sheet1");
+    expect(rows).toHaveLength(SHEET_WITH_METADATA.length);
+    expect(rows[0][0]).toBe("Report Title");
+    expect(rows[5].every((cell) => cell === "")).toBe(true);
+    // Index 6 is the row xlsxToCsvString uses for headerRow = 6
+    expect(rows[6]).toEqual(["Date", "Description", "Amount", "Extra"]);
+  });
+
+  it("returns every cell as a string", () => {
+    const buf = makeWorkbookBuffer([
+      {
+        name: "Sheet1",
+        data: [
+          ["Date", "Amount"],
+          ["2024-01-01", 4.5]
+        ]
+      }
+    ]);
+    expect(getSheetPreviewRows(buf, "Sheet1")[1]).toEqual(["2024-01-01", "4.5"]);
+  });
+
+  it("caps the result at maxRows", () => {
+    const buf = makeWorkbookBuffer([{ name: "Sheet1", data: SHEET_WITH_METADATA }]);
+    const rows = getSheetPreviewRows(buf, "Sheet1", 3);
+    expect(rows).toHaveLength(3);
+    expect(rows[2][0]).toBe("A MARTINEZ");
+  });
+
+  it("throws an Error if the sheet name does not exist", () => {
+    const buf = makeWorkbookBuffer([{ name: "Sheet1", data: SINGLE_SHEET_DATA }]);
+    expect(() => getSheetPreviewRows(buf, "NonExistent")).toThrow('Sheet "NonExistent" not found');
   });
 });

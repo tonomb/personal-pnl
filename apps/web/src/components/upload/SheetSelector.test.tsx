@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -136,5 +136,87 @@ describe("SheetSelector — cancel", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }));
 
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+});
+
+describe("SheetSelector — file preview", () => {
+  const PREVIEW = [
+    ["Report Title", "", ""],
+    ["", "", ""],
+    ["Date", "Description", "Amount"],
+    ["2024-01-01", "Coffee", "4.50"]
+  ];
+
+  it("shows the top rows of the sheet so the header row can be found", () => {
+    render(
+      <SheetSelector sheetNames={SINGLE_SHEET} getPreviewRows={() => PREVIEW} onSelect={vi.fn()} onCancel={vi.fn()} />
+    );
+    const table = screen.getByRole("table", { name: /file preview/i });
+    expect(within(table).getAllByRole("row")).toHaveLength(PREVIEW.length);
+    expect(within(table).getByText("Report Title")).toBeInTheDocument();
+    expect(within(table).getByText("Coffee")).toBeInTheDocument();
+  });
+
+  it("renders no preview when getPreviewRows is not provided", () => {
+    render(<SheetSelector sheetNames={SINGLE_SHEET} onSelect={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.queryByRole("table", { name: /file preview/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the preview only once a sheet is picked in a multi-sheet workbook", async () => {
+    const user = userEvent.setup();
+    const getPreviewRows = vi.fn(() => PREVIEW);
+    render(
+      <SheetSelector sheetNames={MULTI_SHEETS} getPreviewRows={getPreviewRows} onSelect={vi.fn()} onCancel={vi.fn()} />
+    );
+    expect(screen.queryByRole("table", { name: /file preview/i })).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /sheet/i }), "Savings");
+
+    expect(screen.getByRole("table", { name: /file preview/i })).toBeInTheDocument();
+    expect(getPreviewRows).toHaveBeenCalledWith("Savings");
+  });
+
+  it("marks the row matching the header row input as selected", async () => {
+    const user = userEvent.setup();
+    render(
+      <SheetSelector sheetNames={SINGLE_SHEET} getPreviewRows={() => PREVIEW} onSelect={vi.fn()} onCancel={vi.fn()} />
+    );
+    const rows = within(screen.getByRole("table", { name: /file preview/i })).getAllByRole("row");
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+
+    const input = screen.getByRole("textbox", { name: /header row/i });
+    await user.clear(input);
+    await user.type(input, "3");
+
+    expect(rows[0]).toHaveAttribute("aria-selected", "false");
+    expect(rows[2]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("clicking a preview row sets it as the header row", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <SheetSelector sheetNames={SINGLE_SHEET} getPreviewRows={() => PREVIEW} onSelect={onSelect} onCancel={vi.fn()} />
+    );
+
+    await user.click(screen.getByRole("button", { name: /use row 3 as header/i }));
+
+    expect(screen.getByRole("textbox", { name: /header row/i })).toHaveValue("3");
+    await user.click(screen.getByRole("button", { name: /confirm/i }));
+    expect(onSelect).toHaveBeenCalledWith(SINGLE_SHEET[0], 2);
+  });
+
+  it("renders no preview when reading the sheet fails", () => {
+    render(
+      <SheetSelector
+        sheetNames={SINGLE_SHEET}
+        getPreviewRows={() => {
+          throw new Error("boom");
+        }}
+        onSelect={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+    expect(screen.queryByRole("table", { name: /file preview/i })).not.toBeInTheDocument();
   });
 });

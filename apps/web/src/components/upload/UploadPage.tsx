@@ -10,7 +10,7 @@ import { DropZone } from "@/components/upload/DropZone";
 import { RawPreviewPanel } from "@/components/upload/RawPreviewPanel";
 import { SheetSelector } from "@/components/upload/SheetSelector";
 import { generateFingerprint, generateTransactionId, normalizeDate, parseAmount, parseDebitCredit } from "@/lib/csv";
-import { getSheetNames, xlsxToCsvString } from "@/lib/xlsx";
+import { getSheetNames, getSheetPreviewRows, xlsxToCsvString } from "@/lib/xlsx";
 import { trpc } from "@/lib/trpc";
 
 import type { NewColumnMapping, TransactionType, TransactionUpload } from "@pnl/types";
@@ -137,7 +137,12 @@ function toDbMapping(mapping: MappingState, fingerprint: string): NewColumnMappi
 
 export function UploadPage() {
   const [fileMap, setFileMap] = useState<Map<string, FileStatus>>(new Map());
-  const [sheetPicker, setSheetPicker] = useState<{ file: File; sheetNames: string[] } | null>(null);
+  const [sheetPicker, setSheetPicker] = useState<{
+    file: File;
+    sheetNames: string[];
+    buffer: ArrayBuffer;
+    getPreviewRows: (sheetName: string) => string[][];
+  } | null>(null);
   const [lastUsedAccountId, setLastUsedAccountId] = useState<string | null>(null);
   const uploadMutation = trpc.transactions.upload.useMutation();
   const utils = trpc.useUtils();
@@ -241,7 +246,12 @@ export function UploadPage() {
       }
 
       // Always show SheetSelector so the user can set the header row
-      setSheetPicker({ file, sheetNames });
+      setSheetPicker({
+        file,
+        sheetNames,
+        buffer,
+        getPreviewRows: (sheetName) => getSheetPreviewRows(buffer, sheetName)
+      });
       return;
     } else {
       await parseCsvAndContinue(file, file);
@@ -250,18 +260,8 @@ export function UploadPage() {
 
   async function handleSheetSelect(sheetName: string, headerRow: number) {
     if (!sheetPicker) return;
-    const { file } = sheetPicker;
+    const { file, buffer } = sheetPicker;
     setSheetPicker(null);
-
-    let buffer: ArrayBuffer;
-    try {
-      buffer = await file.arrayBuffer();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not read file";
-      updateFile(file.name, { phase: "error", message });
-      toast.error(`"${file.name}": ${message}`);
-      return;
-    }
 
     let csvString: string;
     try {
@@ -377,6 +377,7 @@ export function UploadPage() {
       {sheetPicker && (
         <SheetSelector
           sheetNames={sheetPicker.sheetNames}
+          getPreviewRows={sheetPicker.getPreviewRows}
           onSelect={handleSheetSelect}
           onCancel={() => {
             updateFile(sheetPicker.file.name, undefined);

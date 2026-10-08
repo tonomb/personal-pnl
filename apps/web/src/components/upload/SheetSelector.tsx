@@ -1,15 +1,19 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 interface SheetSelectorProps {
   sheetNames: string[];
   /** Called with the chosen sheet name and 0-indexed header row */
   onSelect: (sheetName: string, headerRow: number) => void;
   onCancel: () => void;
+  /** Top rows of a sheet, untouched, so the user can see where the headers are */
+  getPreviewRows?: (sheetName: string) => string[][];
 }
 
-export function SheetSelector({ sheetNames, onSelect, onCancel }: SheetSelectorProps) {
+export function SheetSelector({ sheetNames, onSelect, onCancel, getPreviewRows }: SheetSelectorProps) {
   const isMultiSheet = sheetNames.length > 1;
   const [selected, setSelected] = useState<string>(isMultiSheet ? "" : sheetNames[0]);
   const [inputValue, setInputValue] = useState<string>("1");
@@ -35,6 +39,17 @@ export function SheetSelector({ sheetNames, onSelect, onCancel }: SheetSelectorP
 
   const isInputValid =
     inputError === "" && inputValue !== "" && /^\d+$/.test(inputValue) && parseInt(inputValue, 10) >= 1;
+
+  const previewRows = useMemo(() => {
+    if (!getPreviewRows || !selected) return [];
+    try {
+      return getPreviewRows(selected);
+    } catch {
+      return [];
+    }
+  }, [getPreviewRows, selected]);
+  const columnCount = Math.max(0, ...previewRows.map((row) => row.length));
+  const headerRowNumber = isInputValid ? parseInt(inputValue, 10) : null;
 
   return (
     <div className="space-y-4 rounded-xl border p-4">
@@ -93,6 +108,48 @@ export function SheetSelector({ sheetNames, onSelect, onCancel }: SheetSelectorP
           </p>
         )}
       </div>
+
+      {previewRows.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">
+            File preview{" "}
+            <span className="text-muted-foreground font-normal">
+              (first {previewRows.length} {previewRows.length === 1 ? "row" : "rows"}) — click the row that contains the
+              column headers
+            </span>
+          </p>
+          <Table aria-label="File preview">
+            <TableBody>
+              {previewRows.map((row, i) => {
+                const rowNumber = i + 1;
+                const isHeader = rowNumber === headerRowNumber;
+                const isSkipped = headerRowNumber !== null && rowNumber < headerRowNumber;
+                return (
+                  <TableRow
+                    key={i}
+                    aria-selected={isHeader}
+                    onClick={() => validateAndSet(String(rowNumber))}
+                    className={cn(
+                      "cursor-pointer",
+                      isHeader && "bg-muted font-medium",
+                      isSkipped && "text-muted-foreground/60"
+                    )}
+                  >
+                    <TableCell className="w-10 text-muted-foreground tabular-nums">
+                      <button type="button" aria-label={`Use row ${rowNumber} as header`}>
+                        {rowNumber}
+                      </button>
+                    </TableCell>
+                    {Array.from({ length: columnCount }, (_, c) => (
+                      <TableCell key={c}>{row[c] ?? ""}</TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <Button disabled={!selected || !isInputValid} onClick={handleConfirm}>

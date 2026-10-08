@@ -10,6 +10,25 @@ export function getSheetNames(buffer: ArrayBuffer): string[] {
 }
 
 /**
+ * Returns the first `maxRows` rows of a sheet as strings, untouched (metadata
+ * and blank rows included), so the user can spot which row holds the headers.
+ * Index N here is the same row `xlsxToCsvString` treats as `headerRow` N.
+ * Throws if the buffer is invalid or the sheet name doesn't exist.
+ */
+export function getSheetPreviewRows(buffer: ArrayBuffer, sheetName: string, maxRows = 20): string[][] {
+  const wb = XLSX.read(new Uint8Array(buffer), { type: "array", sheetRows: maxRows });
+  const sheet = wb.Sheets[sheetName];
+  if (!sheet) throw new Error(`Sheet "${sheetName}" not found`);
+  const rows = XLSX.utils.sheet_to_json<Array<string | number>>(sheet, {
+    header: 1,
+    range: 0,
+    defval: "",
+    blankrows: true
+  });
+  return rows.slice(0, maxRows).map((row) => row.map((cell) => String(cell ?? "")));
+}
+
+/**
  * Converts a single sheet in an XLSX/XLS ArrayBuffer to a CSV string.
  * Throws if the buffer is invalid or the sheet name doesn't exist.
  */

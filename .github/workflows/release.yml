@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency: ${{ github.workflow }}
+    # Cloudflare secrets live in this environment so only its allowed branches can read them.
+    environment: production
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -27,7 +29,17 @@ jobs:
         run: pnpm install --frozen-lockfile --child-concurrency=10
       - name: Check & Test
         run: bun turbo check:ci
+      # Migrate and deploy only run when the DEPLOY_ENABLED variable is "true",
+      # so forks without Cloudflare credentials skip them instead of failing.
+      # Migrate before deploying so new code never runs against an old schema.
+      - name: Apply D1 Migrations
+        if: vars.DEPLOY_ENABLED == 'true'
+        run: pnpm db:push:remote
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       - name: Deploy
+        if: vars.DEPLOY_ENABLED == 'true'
         run: bun turbo deploy
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

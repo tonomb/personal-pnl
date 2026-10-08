@@ -61,5 +61,5 @@ The worker has its own matching router in `apps/worker/src/trpc/router.ts` (with
 ```bash
 just dev         # Start web (5173) + worker (8787) concurrently
 just check       # Lint + type-check + format
-pnpm db:push     # Apply Drizzle schema changes to D1
+pnpm db:generate # Generate a D1 migration after editing the schema (CI applies it on merge to main)
 ```

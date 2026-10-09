@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TAG_PRESET_COLORS } from "@/lib/color";
+import { useListHighlight } from "@/lib/use-list-highlight";
 import { cn } from "@/lib/utils";
 
 type TagPickerProps = {
@@ -14,7 +15,11 @@ type TagPickerProps = {
   selectedTagIds: ReadonlySet<string>;
   onAssign: (tagId: string) => void;
   onCreate: (name: string, color: string) => Promise<Tag>;
-  trigger: React.ReactNode;
+  /** Omit to drive the picker with `open` / `onOpenChange` and position it against `anchor`. */
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  anchor?: Element | null;
   /**
    * Show error message inline (e.g. duplicate name conflict). Cleared by the
    * picker when the user edits the name input or reopens the popover.
@@ -24,8 +29,23 @@ type TagPickerProps = {
 
 type View = "list" | "create";
 
-export function TagPicker({ tags, selectedTagIds, onAssign, onCreate, trigger, align = "start" }: TagPickerProps) {
-  const [open, setOpen] = React.useState(false);
+export function TagPicker({
+  tags,
+  selectedTagIds,
+  onAssign,
+  onCreate,
+  trigger,
+  open: controlledOpen,
+  onOpenChange,
+  anchor,
+  align = "start"
+}: TagPickerProps) {
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  function setOpen(next: boolean) {
+    setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  }
   const [view, setView] = React.useState<View>("list");
   const [search, setSearch] = React.useState("");
   const [newName, setNewName] = React.useState("");
@@ -50,6 +70,31 @@ export function TagPicker({ tags, selectedTagIds, onAssign, onCreate, trigger, a
     if (!q) return tags;
     return tags.filter((t) => t.name.toLowerCase().includes(q));
   }, [tags, search]);
+
+  // Keyboard highlight runs over the assignable tags, then "Create new tag".
+  const assignable = React.useMemo(() => filtered.filter((t) => !selectedTagIds.has(t.id)), [filtered, selectedTagIds]);
+  const { index, move, listRef } = useListHighlight(assignable.length + 1, search);
+  const highlightedTagId = assignable[index]?.id;
+  const createHighlighted = index === assignable.length;
+
+  function openCreateView() {
+    setNewName(search.trim());
+    setView("create");
+  }
+
+  function handleListKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      move(1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      move(-1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedTagId) handlePick(highlightedTagId);
+      else openCreateView();
+    }
+  }
 
   function handlePick(tagId: string) {
     onAssign(tagId);
@@ -80,16 +125,17 @@ export function TagPicker({ tags, selectedTagIds, onAssign, onCreate, trigger, a
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={trigger as React.ReactElement} />
-      <PopoverContent align={align} className="w-64 p-0">
+      {trigger ? <PopoverTrigger render={trigger as React.ReactElement} /> : null}
+      <PopoverContent align={align} anchor={anchor} className="w-64 p-0">
         {view === "list" ? (
-          <div className="flex flex-col">
+          <div ref={listRef} className="flex flex-col">
             <div className="border-b p-2">
               <Input
                 autoFocus
                 placeholder="Search or create…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={handleListKeyDown}
                 className="h-7"
               />
             </div>
@@ -99,15 +145,18 @@ export function TagPicker({ tags, selectedTagIds, onAssign, onCreate, trigger, a
               ) : (
                 filtered.map((tag) => {
                   const isSelected = selectedTagIds.has(tag.id);
+                  const isHighlighted = tag.id === highlightedTagId;
                   return (
                     <button
                       key={tag.id}
                       type="button"
                       onClick={() => !isSelected && handlePick(tag.id)}
                       disabled={isSelected}
+                      data-highlighted={isHighlighted}
                       className={cn(
                         "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm outline-none",
-                        isSelected ? "cursor-default opacity-60" : "hover:bg-accent hover:text-accent-foreground"
+                        isSelected ? "cursor-default opacity-60" : "hover:bg-accent hover:text-accent-foreground",
+                        isHighlighted && "bg-accent text-accent-foreground"
                       )}
                     >
                       <span
@@ -124,11 +173,12 @@ export function TagPicker({ tags, selectedTagIds, onAssign, onCreate, trigger, a
             </div>
             <button
               type="button"
-              onClick={() => {
-                setNewName(search.trim());
-                setView("create");
-              }}
-              className="flex items-center gap-2 border-t px-3 py-2 text-left text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+              onClick={openCreateView}
+              data-highlighted={createHighlighted}
+              className={cn(
+                "flex items-center gap-2 border-t px-3 py-2 text-left text-sm font-medium hover:bg-accent hover:text-accent-foreground",
+                createHighlighted && "bg-accent text-accent-foreground"
+              )}
             >
               <PlusIcon className="size-3.5" />
               Create new tag{search.trim() ? ` "${search.trim()}"` : ""}

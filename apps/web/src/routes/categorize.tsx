@@ -18,14 +18,17 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { CategoryPicker } from "@/components/categorize/CategoryPicker";
 import { TagFilterSelect } from "@/components/tags/TagFilterSelect";
 import { TagPicker } from "@/components/tags/TagPicker";
 import { TagPill } from "@/components/tags/TagPill";
+import { classifyTargetIds, merchantCategory } from "@/lib/categorize-helpers";
 import { getContrastColor } from "@/lib/color";
 import { formatCurrency } from "@/lib/pnl-helpers";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 
+import type { FlatRow, MerchantRow } from "@/lib/categorize-helpers";
 import type { Category, Tag, TransactionWithCategory } from "@pnl/types";
 
 export const Route = createFileRoute("/categorize")({
@@ -43,21 +46,8 @@ type Filters = {
   tagId: string | undefined;
 };
 
-type MerchantRow = {
-  kind: "merchant-header";
-  merchantKey: string;
-  txIds: string[];
-  displayName: string;
-  /** Debit/credit subtotals per original currency — never summed across currencies. */
-  totals: Array<{ currency: string; debits: number; credits: number }>;
-};
-
-type TxRow = {
-  kind: "transaction";
-  tx: TransactionWithCategory;
-};
-
-type FlatRow = MerchantRow | TxRow;
+/** The keyboard-opened picker and the transactions it applies to. */
+type PickerState = { kind: "category" | "tag"; ids: string[] };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,6 +69,46 @@ function formatMonthLabel(month: string): string {
 // ---------------------------------------------------------------------------
 // Subcomponents
 // ---------------------------------------------------------------------------
+
+function CategoryBadge({ name, color }: { name: string | null; color: string | null }) {
+  if (name == null) {
+    return (
+      <Badge variant="outline" className="shrink-0">
+        Uncategorized
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="secondary"
+      className="shrink-0"
+      style={color ? { backgroundColor: color, color: getContrastColor(color) } : undefined}
+    >
+      {name}
+    </Badge>
+  );
+}
+
+function Key({ children }: { children: React.ReactNode }) {
+  return <kbd className="rounded border bg-muted px-1 font-sans text-[0.6875rem] text-foreground">{children}</kbd>;
+}
+
+function KeyHints() {
+  return (
+    <p className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
+      <Key>↑</Key>
+      <Key>↓</Key> move
+      <span aria-hidden>·</span>
+      <Key>Space</Key> select
+      <span aria-hidden>·</span>
+      <Key>C</Key> categorize
+      <span aria-hidden>·</span>
+      <Key>T</Key> tag
+      <span aria-hidden>·</span>
+      <Key>Enter</Key> accept
+    </p>
+  );
+}
 
 function ProgressHeader({ categorized, total }: { categorized: number; total: number }) {
   const pct = total > 0 ? Math.round((categorized / total) * 100) : 0;
@@ -289,7 +319,17 @@ function MerchantHeaderRow({
           </span>
         ))}
       </span>
-      <span className="hidden sm:block" />
+      <span className="hidden min-w-0 items-center sm:flex">
+        {row.category.kind === "mixed" ? (
+          <Badge variant="outline" className="shrink-0">
+            Mixed
+          </Badge>
+        ) : row.category.kind === "single" ? (
+          <CategoryBadge name={row.category.name} color={row.category.color} />
+        ) : (
+          <CategoryBadge name={null} color={null} />
+        )}
+      </span>
     </div>
   );
 }
@@ -337,23 +377,7 @@ function TransactionRow({
         {formatCurrency(tx.amount, tx.currency)}
       </span>
       <span className="hidden min-w-0 items-center gap-1.5 overflow-hidden sm:flex">
-        {tx.categoryId != null ? (
-          <Badge
-            variant="secondary"
-            className="shrink-0"
-            style={
-              tx.categoryColor
-                ? { backgroundColor: tx.categoryColor, color: getContrastColor(tx.categoryColor) }
-                : undefined
-            }
-          >
-            {tx.categoryName}
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="shrink-0">
-            Uncategorized
-          </Badge>
-        )}
+        <CategoryBadge name={tx.categoryId != null ? tx.categoryName : null} color={tx.categoryColor} />
         <span className="flex min-w-0 flex-1 flex-nowrap items-center gap-1 overflow-x-auto">
           {tx.tags.map((tag) => (
             <TagPill key={tag.id} tag={tag} onRemove={() => onRemoveTag(tag.id)} />
@@ -396,6 +420,7 @@ function CategorizePage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkCategoryId, setBulkCategoryId] = useState<string>("");
   const [cursorIndex, setCursorIndex] = useState(0);
+  const [picker, setPicker] = useState<PickerState | null>(null);
 
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -581,7 +606,8 @@ function CategorizePage() {
         merchantKey: key,
         txIds,
         displayName: txs[0]!.description.trim(),
-        totals
+        totals,
+        category: merchantCategory(txs)
       });
       if (expandedMerchants.has(key)) {
         for (const tx of txs) rows.push({ kind: "transaction", tx });
@@ -607,16 +633,41 @@ function CategorizePage() {
   selectedIdsRef.current = selectedIds;
   const cursorIndexRef = useRef(cursorIndex);
   cursorIndexRef.current = cursorIndex;
+  const pickerRef = useRef(picker);
+  pickerRef.current = picker;
+
+  // Rows disappear when filters change or a categorized row leaves "Uncategorized only".
+  useEffect(() => {
+    const last = Math.max(flatRows.length - 1, 0);
+    if (cursorIndex > last) setCursorIndex(last);
+  }, [flatRows.length, cursorIndex]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName.toLowerCase();
-      if (tag === "input" || tag === "select" || tag === "textarea") return;
+      if (pickerRef.current) return;
+      const active = document.activeElement as HTMLElement | null;
+      // Typing, or a key meant for an open popup (select list, tag picker).
+      if (
+        active?.closest(
+          'input, select, textarea, [contenteditable="true"], [data-slot="select-content"], [data-slot="popover-content"]'
+        )
+      ) {
+        return;
+      }
+      // Leave browser shortcuts (copy, new tab) alone.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Space belongs to a focused button, link or checkbox.
+      if (e.key === " " && active?.closest('button, a, [role="checkbox"]')) return;
 
       const rows = flatRowsRef.current;
       const idx = cursorIndexRef.current;
 
-      if (e.key === "j" || e.key === "ArrowDown") {
+      if (e.key === "c" || e.key === "t") {
+        const ids = classifyTargetIds(rows, idx, selectedIdsRef.current);
+        if (ids.length === 0) return;
+        e.preventDefault();
+        setPicker({ kind: e.key === "c" ? "category" : "tag", ids });
+      } else if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
         const next = Math.min(idx + 1, rows.length - 1);
         setCursorIndex(next);
@@ -684,6 +735,27 @@ function CategorizePage() {
     setBulkCategoryId("");
   }
 
+  function handlePickCategory(categoryId: number | null) {
+    if (!picker) return;
+    categorizeMutation.mutate({ ids: picker.ids, categoryId });
+    setPicker(null);
+    // Under "Uncategorized only" the categorized rows leave the list, so the next row slides into place.
+    if (!(filters.uncategorizedOnly && categoryId != null)) {
+      const next = Math.min(cursorIndex + 1, flatRows.length - 1);
+      setCursorIndex(next);
+      rowVirtualizer.scrollToIndex(next);
+    }
+  }
+
+  // Tags already on the target are shown as assigned only when the target is a single transaction.
+  const pickerTagIds = useMemo<ReadonlySet<string>>(() => {
+    if (picker?.kind !== "tag" || picker.ids.length !== 1) return EMPTY_TAG_ID_SET;
+    const tx = txData.find((t) => t.id === picker.ids[0]);
+    return new Set(tx?.tags.map((t) => t.id));
+  }, [picker, txData]);
+
+  const pickerAnchor = picker ? document.getElementById(`tx-row-${cursorIndex}`) : null;
+
   function handleApplyBulk() {
     if (!bulkCategoryId) return;
     const categoryId = bulkCategoryId === "__null__" ? null : parseInt(bulkCategoryId, 10);
@@ -704,6 +776,7 @@ function CategorizePage() {
         </div>
         <ProgressHeader categorized={categorizedCount} total={txData.length} />
         <FilterBar filters={filters} availableMonths={availableMonths} tags={tags} onChange={setFilters} />
+        <KeyHints />
         {selectedIds.size > 0 && (
           <BulkAssignBar
             selectedCount={selectedIds.size}
@@ -798,6 +871,25 @@ function CategorizePage() {
           </div>
         )}
       </div>
+
+      <CategoryPicker
+        open={picker?.kind === "category"}
+        onOpenChange={(open) => !open && setPicker(null)}
+        anchor={pickerAnchor}
+        catData={catData}
+        targetCount={picker?.ids.length ?? 0}
+        onPick={handlePickCategory}
+      />
+      <TagPicker
+        open={picker?.kind === "tag"}
+        onOpenChange={(open) => !open && setPicker(null)}
+        anchor={pickerAnchor}
+        align="end"
+        tags={tags}
+        selectedTagIds={pickerTagIds}
+        onAssign={(tagId) => picker && assignTagMutation.mutate({ tagId, transactionIds: picker.ids })}
+        onCreate={(name, color) => createTagMutation.mutateAsync({ name, color })}
+      />
     </main>
   );
 }

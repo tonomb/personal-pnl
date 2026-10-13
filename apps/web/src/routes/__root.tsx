@@ -1,6 +1,7 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createRootRoute({
@@ -38,6 +39,9 @@ function RootLayout() {
           <NavLink to="/pnl">P&amp;L</NavLink>
           <NavLink to="/tags">Tags</NavLink>
           <NavLink to="/accounts">Accounts</NavLink>
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </nav>
       </header>
 

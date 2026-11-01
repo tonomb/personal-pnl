@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -83,5 +83,41 @@ describe("DropZone", () => {
   it("shows instructional text mentioning supported formats", () => {
     render(<DropZone onFiles={vi.fn()} />);
     expect(screen.getByText(/csv|xlsx/i)).toBeInTheDocument();
+  });
+  // A popup elsewhere on the page (e.g. the Account select) lays a full-screen
+  // backdrop over the drop zone, so the drop lands on that instead (LAG-42).
+  it("accepts files dropped outside the zone, such as on a popup backdrop", () => {
+    const onFiles = vi.fn();
+    render(<DropZone onFiles={onFiles} />);
+
+    const backdrop = document.createElement("div");
+    document.body.appendChild(backdrop);
+    const dataTransfer = { types: ["Files"], files: [makeFile("bank.csv")] };
+    fireEvent.dragOver(backdrop, { dataTransfer });
+    const notCancelled = fireEvent.drop(backdrop, { dataTransfer });
+
+    expect(notCancelled).toBe(false);
+    expect(onFiles).toHaveBeenCalledOnce();
+    expect(onFiles.mock.calls[0][0][0].name).toBe("bank.csv");
+    backdrop.remove();
+  });
+
+  it("handles a drop on the zone itself only once", () => {
+    const onFiles = vi.fn();
+    render(<DropZone onFiles={onFiles} />);
+
+    const dataTransfer = { types: ["Files"], files: [makeFile("bank.csv")] };
+    fireEvent.drop(screen.getByLabelText("Drop zone"), { dataTransfer });
+
+    expect(onFiles).toHaveBeenCalledOnce();
+  });
+
+  it("ignores drops outside the zone while disabled", () => {
+    const onFiles = vi.fn();
+    render(<DropZone onFiles={onFiles} disabled />);
+
+    fireEvent.drop(document.body, { dataTransfer: { types: ["Files"], files: [makeFile("bank.csv")] } });
+
+    expect(onFiles).not.toHaveBeenCalled();
   });
 });

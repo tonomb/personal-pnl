@@ -1,5 +1,5 @@
 import { UploadCloud } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface DropZoneProps {
   onFiles: (files: File[]) => void;
@@ -16,6 +16,33 @@ export function DropZone({ onFiles, disabled }: DropZoneProps) {
     const accepted = all.filter((f) => /\.(csv|xlsx|xls)$/i.test(f.name));
     if (accepted.length > 0) onFiles(accepted);
   }
+
+  // Accept a file dropped anywhere on the page, not only on the zone. An open
+  // popup (e.g. the Account select) covers the page with a modal backdrop, so
+  // a drop aimed at the zone lands on that backdrop instead — without this the
+  // statement is lost (or opened by the browser) until the popup closes.
+  const handleFilesRef = useRef(handleFiles);
+  handleFilesRef.current = handleFiles;
+  useEffect(() => {
+    if (disabled) return;
+    const isFileDrag = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    function onWindowDragOver(e: DragEvent) {
+      if (isFileDrag(e)) e.preventDefault();
+    }
+    function onWindowDrop(e: DragEvent) {
+      // The zone's own onDrop already handled (and cancelled) it.
+      if (e.defaultPrevented || !isFileDrag(e)) return;
+      e.preventDefault();
+      setIsDragging(false);
+      handleFilesRef.current(e.dataTransfer?.files ?? null);
+    }
+    window.addEventListener("dragover", onWindowDragOver);
+    window.addEventListener("drop", onWindowDrop);
+    return () => {
+      window.removeEventListener("dragover", onWindowDragOver);
+      window.removeEventListener("drop", onWindowDrop);
+    };
+  }, [disabled]);
 
   return (
     <div

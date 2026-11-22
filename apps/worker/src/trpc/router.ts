@@ -5,6 +5,12 @@ import { z } from "zod";
 
 import {
   batchChunked,
+  CategoryNameTakenError,
+  CategoryNotFoundError,
+  createCategory,
+  deleteCategory,
+  listCategories,
+  updateCategory,
   buildTagReport,
   computeKpiSummary,
   computeMonthlyPnl,
@@ -25,7 +31,6 @@ import {
   accounts,
   assignTagInputSchema,
   cardBenefits,
-  categories,
   categorizeInputSchema,
   columnMappings,
   createAccountInputSchema,
@@ -83,6 +88,20 @@ async function withFxErrorMapped<T>(fn: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (err instanceof FxRateMissingError) {
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: err.message, cause: err });
+    }
+    throw err;
+  }
+}
+
+async function withCategoryErrors<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof CategoryNotFoundError) {
+      throw new TRPCError({ code: "NOT_FOUND", message: err.message, cause: err });
+    }
+    if (err instanceof CategoryNameTakenError) {
+      throw new TRPCError({ code: "CONFLICT", message: err.message, cause: err });
     }
     throw err;
   }
@@ -219,40 +238,19 @@ export const appRouter = router({
   }),
 
   categories: router({
-    list: publicProcedure.query(async ({ ctx }) => {
-      const rows = await ctx.db.select().from(categories).orderBy(categories.sortOrder);
-      return {
-        INCOME: rows.filter((c) => c.groupType === "INCOME"),
-        FIXED: rows.filter((c) => c.groupType === "FIXED"),
-        VARIABLE: rows.filter((c) => c.groupType === "VARIABLE"),
-        IGNORED: rows.filter((c) => c.groupType === "IGNORED")
-      };
-    }),
+    list: publicProcedure.query(({ ctx }) => listCategories(ctx.db)),
 
-    create: publicProcedure.input(createCategoryInputSchema).mutation(async ({ input, ctx }) => {
-      const [created] = await ctx.db.insert(categories).values(input).returning();
-      return created;
-    }),
+    create: publicProcedure
+      .input(createCategoryInputSchema)
+      .mutation(({ input, ctx }) => withCategoryErrors(() => createCategory(ctx.db, input))),
 
-    update: publicProcedure.input(updateCategoryInputSchema).mutation(async ({ input, ctx }) => {
-      const { id, ...patch } = input;
-      const [updated] = await ctx.db.update(categories).set(patch).where(eq(categories.id, id)).returning();
-      if (!updated) {
-        throw new TRPCError({ code: "NOT_FOUND", message: `Category ${id} not found` });
-      }
-      return updated;
-    }),
+    update: publicProcedure
+      .input(updateCategoryInputSchema)
+      .mutation(({ input, ctx }) => withCategoryErrors(() => updateCategory(ctx.db, input))),
 
-    delete: publicProcedure.input(deleteCategoryInputSchema).mutation(async ({ input, ctx }) => {
-      const [deleted] = await ctx.db
-        .delete(categories)
-        .where(eq(categories.id, input.id))
-        .returning({ id: categories.id });
-      if (!deleted) {
-        throw new TRPCError({ code: "NOT_FOUND", message: `Category ${input.id} not found` });
-      }
-      return { deletedId: deleted.id };
-    })
+    delete: publicProcedure
+      .input(deleteCategoryInputSchema)
+      .mutation(({ input, ctx }) => withCategoryErrors(() => deleteCategory(ctx.db, input.id)))
   }),
 
   tags: router({

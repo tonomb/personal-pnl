@@ -9,6 +9,7 @@ import {
   cardBenefits,
   categories,
   columnMappings,
+  createCategoryInputSchema,
   createTagInputSchema,
   fxRates,
   settings,
@@ -16,6 +17,7 @@ import {
   transactionInputSchema,
   transactions,
   transactionTags,
+  updateCategoryInputSchema,
   updateSettingsInputSchema
 } from "@pnl/types";
 
@@ -425,6 +427,50 @@ describe("categories.create", () => {
     const created = await makeCaller().categories.create({ name: "Food", groupType: "VARIABLE", color: "#ff00ff" });
     expect(created.color).toBe("#ff00ff");
   });
+
+  it("marks created categories as custom (not default)", async () => {
+    const created = await makeCaller().categories.create({ name: "Pets", groupType: "VARIABLE" });
+    expect(created.isDefault).toBe(false);
+  });
+
+  it("trims the name", async () => {
+    const created = await makeCaller().categories.create({ name: "  Pets  ", groupType: "VARIABLE" });
+    expect(created.name).toBe("Pets");
+  });
+
+  it("appends the category to the end of its group", async () => {
+    await makeDb()
+      .insert(categories)
+      .values([
+        { name: "A", groupType: "VARIABLE", sortOrder: 40 },
+        { name: "B", groupType: "FIXED", sortOrder: 900 }
+      ]);
+
+    const created = await makeCaller().categories.create({ name: "Pets", groupType: "VARIABLE" });
+
+    expect(created.sortOrder).toBe(50);
+    const list = await makeCaller().categories.list();
+    expect(list.VARIABLE.map((c) => c.name)).toEqual(["A", "Pets"]);
+  });
+
+  it("rejects an empty name", () => {
+    expect(createCategoryInputSchema.safeParse({ name: "   ", groupType: "VARIABLE" }).success).toBe(false);
+  });
+
+  it("rejects a color that is not #RRGGBB", () => {
+    expect(createCategoryInputSchema.safeParse({ name: "Pets", groupType: "VARIABLE", color: "red" }).success).toBe(
+      false
+    );
+    expect(updateCategoryInputSchema.safeParse({ id: 1, color: "#abc" }).success).toBe(false);
+  });
+
+  it("rejects a duplicate name case-insensitively, across groups", async () => {
+    await makeDb().insert(categories).values({ name: "Rent", groupType: "FIXED" });
+
+    await expect(makeCaller().categories.create({ name: "rent", groupType: "VARIABLE" })).rejects.toMatchObject({
+      code: "CONFLICT"
+    });
+  });
 });
 
 describe("categories.update", () => {
@@ -464,8 +510,47 @@ describe("categories.update", () => {
     expect(updated.groupType).toBe("VARIABLE");
   });
 
-  it("throws when the category does not exist", async () => {
-    await expect(makeCaller().categories.update({ id: 99999, name: "Ghost" })).rejects.toThrow();
+  it("throws NOT_FOUND when the category does not exist", async () => {
+    await expect(makeCaller().categories.update({ id: 99999, name: "Ghost" })).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
+  });
+
+  it("rejects renaming to another category's name", async () => {
+    await makeDb().insert(categories).values({ name: "Rent", groupType: "FIXED" });
+    const [cat] = await makeDb().insert(categories).values({ name: "X", groupType: "VARIABLE" }).returning();
+
+    await expect(makeCaller().categories.update({ id: cat!.id, name: "RENT" })).rejects.toMatchObject({
+      code: "CONFLICT"
+    });
+  });
+
+  it("allows changing the case of its own name", async () => {
+    const [cat] = await makeDb().insert(categories).values({ name: "rent", groupType: "FIXED" }).returning();
+
+    const updated = await makeCaller().categories.update({ id: cat!.id, name: "Rent" });
+
+    expect(updated.name).toBe("Rent");
+  });
+
+  it("appends the category to the end of its new group when the group changes", async () => {
+    await makeDb().insert(categories).values({ name: "F", groupType: "FIXED", sortOrder: 70 });
+    const [cat] = await makeDb()
+      .insert(categories)
+      .values({ name: "X", groupType: "VARIABLE", sortOrder: 5 })
+      .returning();
+
+    const updated = await makeCaller().categories.update({ id: cat!.id, groupType: "FIXED" });
+
+    expect(updated.sortOrder).toBe(80);
+  });
+
+  it("returns the category unchanged for an empty patch", async () => {
+    const [cat] = await makeDb().insert(categories).values({ name: "X", groupType: "VARIABLE" }).returning();
+
+    const updated = await makeCaller().categories.update({ id: cat!.id });
+
+    expect(updated).toEqual(cat);
   });
 });
 
@@ -502,8 +587,28 @@ describe("categories.delete", () => {
     expect(tx!.categoryId).toBeNull();
   });
 
-  it("throws when the category does not exist", async () => {
-    await expect(makeCaller().categories.delete({ id: 99999 })).rejects.toThrow();
+  it("reports how many transactions became uncategorized", async () => {
+    const db = makeDb();
+    const [cat] = await db.insert(categories).values({ name: "Temp", groupType: "VARIABLE" }).returning();
+    await db.insert(transactions).values(
+      ["tx-d-2", "tx-d-3"].map((id) => ({
+        id,
+        date: "2024-01-01",
+        description: "x",
+        amountCents: cents(1),
+        type: "DEBIT" as const,
+        accountId: TEST_ACCOUNT_ID,
+        categoryId: cat!.id
+      }))
+    );
+
+    const result = await makeCaller().categories.delete({ id: cat!.id });
+
+    expect(result).toEqual({ deletedId: cat!.id, uncategorizedCount: 2 });
+  });
+
+  it("throws NOT_FOUND when the category does not exist", async () => {
+    await expect(makeCaller().categories.delete({ id: 99999 })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 

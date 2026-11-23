@@ -320,21 +320,28 @@ export const categorizeInputSchema = z.object({
   categoryId: z.number().int().nullable()
 });
 
-export const createCategoryInputSchema = insertCategorySchema.pick({
-  name: true,
-  groupType: true,
-  color: true
+const categoryNameSchema = z.string().trim().min(1, "Name cannot be empty").max(64, "Name too long");
+const categoryColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color must be #RRGGBB hex");
+const categoryGroupSchema = z.enum(["INCOME", "FIXED", "VARIABLE", "IGNORED"]);
+
+export const createCategoryInputSchema = z.object({
+  name: categoryNameSchema,
+  groupType: categoryGroupSchema,
+  color: categoryColorSchema.nullable().optional()
 });
 
 export const updateCategoryInputSchema = z.object({
   id: z.number().int(),
-  name: z.string().min(1).optional(),
-  groupType: z.enum(["INCOME", "FIXED", "VARIABLE", "IGNORED"]).optional(),
-  color: z.string().nullable().optional(),
+  name: categoryNameSchema.optional(),
+  groupType: categoryGroupSchema.optional(),
+  color: categoryColorSchema.nullable().optional(),
   sortOrder: z.number().int().optional()
 });
 
 export const deleteCategoryInputSchema = z.object({ id: z.number().int() });
+
+export type CreateCategoryInput = z.infer<typeof createCategoryInputSchema>;
+export type UpdateCategoryInput = z.infer<typeof updateCategoryInputSchema>;
 
 export const pnlGetReportInputSchema = z.object({
   year: z.number().int().min(2000).max(2100)

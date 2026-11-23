@@ -18,6 +18,14 @@ export {
 export type { TransactionListQuery } from "./transactions";
 export { buildTagReport, findTagByName, getTagReportByName, listTagNames } from "./tags";
 export { getSettings, updateSettings } from "./settings";
+export {
+  CategoryNameTakenError,
+  CategoryNotFoundError,
+  createCategory,
+  deleteCategory,
+  listCategories,
+  updateCategory
+} from "./categories";
 export { deleteFxRate, listFxRates, upsertFxRate } from "./fx-rates";
 export { insertTransactions } from "./ingest";
 export type { InsertTransactionsResult } from "./ingest";

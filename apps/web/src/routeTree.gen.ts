@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UploadRouteImport } from './routes/upload'
 import { Route as PnlRouteImport } from './routes/pnl'
 import { Route as CategorizeRouteImport } from './routes/categorize'
+import { Route as CategoriesRouteImport } from './routes/categories'
 import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TagsIndexRouteImport } from './routes/tags/index'
@@ -30,6 +31,11 @@ const PnlRoute = PnlRouteImport.update({
 const CategorizeRoute = CategorizeRouteImport.update({
   id: '/categorize',
   path: '/categorize',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CategoriesRoute = CategoriesRouteImport.update({
+  id: '/categories',
+  path: '/categories',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccountsRoute = AccountsRouteImport.update({
@@ -56,6 +62,7 @@ const TagsTagIdRoute = TagsTagIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accounts': typeof AccountsRoute
+  '/categories': typeof CategoriesRoute
   '/categorize': typeof CategorizeRoute
   '/pnl': typeof PnlRoute
   '/upload': typeof UploadRoute
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accounts': typeof AccountsRoute
+  '/categories': typeof CategoriesRoute
   '/categorize': typeof CategorizeRoute
   '/pnl': typeof PnlRoute
   '/upload': typeof UploadRoute
@@ -75,6 +83,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/accounts': typeof AccountsRoute
+  '/categories': typeof CategoriesRoute
   '/categorize': typeof CategorizeRoute
   '/pnl': typeof PnlRoute
   '/upload': typeof UploadRoute
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/accounts'
+    | '/categories'
     | '/categorize'
     | '/pnl'
     | '/upload'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/accounts'
+    | '/categories'
     | '/categorize'
     | '/pnl'
     | '/upload'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/accounts'
+    | '/categories'
     | '/categorize'
     | '/pnl'
     | '/upload'
@@ -114,6 +126,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountsRoute: typeof AccountsRoute
+  CategoriesRoute: typeof CategoriesRoute
   CategorizeRoute: typeof CategorizeRoute
   PnlRoute: typeof PnlRoute
   UploadRoute: typeof UploadRoute
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/categorize'
       fullPath: '/categorize'
       preLoaderRoute: typeof CategorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/categories': {
+      id: '/categories'
+      path: '/categories'
+      fullPath: '/categories'
+      preLoaderRoute: typeof CategoriesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/accounts': {
@@ -178,6 +198,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountsRoute: AccountsRoute,
+  CategoriesRoute: CategoriesRoute,
   CategorizeRoute: CategorizeRoute,
   PnlRoute: PnlRoute,
   UploadRoute: UploadRoute,

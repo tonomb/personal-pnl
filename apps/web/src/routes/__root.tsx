@@ -36,6 +36,7 @@ function RootLayout() {
           <span className="mr-5 text-sm font-semibold tracking-tight">Personal P&amp;L</span>
           <NavLink to="/upload">Upload</NavLink>
           <NavLink to="/categorize">Categorize</NavLink>
+          <NavLink to="/categories">Categories</NavLink>
           <NavLink to="/pnl">P&amp;L</NavLink>
           <NavLink to="/tags">Tags</NavLink>
           <NavLink to="/accounts">Accounts</NavLink>
